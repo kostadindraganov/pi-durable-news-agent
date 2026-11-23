@@ -1,17 +1,14 @@
 # Pi Durable News Agent
 
-> **This agent does not wait for you to work. It works for you, then waits, then keeps working.**
-> A proactive news agent built on pi-durable that sorts every story into Hype, Facts and Signal with jev, on your Mac, an always-on Mac mini or a cloud VM.
-
-📺 Watch this video to get the full breakdown of this codebase: **[Proactive Agents: a pi-durable agent that filters Hype, Facts and Signal on YouTube](https://youtu.be/OLqP8jxJ0Wc)**
+Pi Durable News Agent collects news on a schedule, groups related coverage, and publishes a ranked feed. It runs on a Mac or a cloud VM and serves a web interface, a terminal UI, and a CLI.
 
 <p align="center">
   <img src="images/01_durable_news_agent.png" alt="Pi Durable News Agent: news worth your attention" width="850">
 </p>
 
-In the age of AI there is exponentially more noise than signal: clickbait, overhyped launches and attention theft. As an engineer, your time and attention are your most important resources. This codebase is a **proactive agent** that guards them.
+Each sweep checks configured sources and searches for stories on your topics. Jev evaluates candidates for **Hype, Facts and Signal**. The agent researches the highest-ranked stories and presents them as cards. Sweep progress is checkpointed in SQLite so interrupted work can resume.
 
-Every few minutes a cron tick wakes a durable agent. It checks 28 sources (news feeds, Hacker News, GitHub releases, benchmark blogs) and searches the last 7 days for 15 of your topics, lets jev throw out what is off topic or not worth a look, folds repeated coverage into one story, ranks the rest by importance and keeps the top 7, sends research subagents after the strongest items, scores each one as **Hype, Facts and Signal**, and renders it as a card it picks from a fixed component catalog. Then it waits. When it crashes, restarts or loses a provider call, it resumes from its last checkpoint and never pays twice for finished work. **News worth your attention, from an agent that does not need you to start it.**
+Set the sweep cadence from the web interface. Choose 1, 5, 10, 15, 30, or 60 minutes, opt for 6, 12, or 24 hours, or turn automatic sweeps off.
 
 ---
 
@@ -59,7 +56,7 @@ Here the durable agent is a [pi-durable](https://www.npmjs.com/package/@earendil
 ## In, near, out of the loop
 
 <p align="center">
-  <img src="images/09_in_near_out_loop.png" alt="In loop: you prompt every step. Near the loop: a clock drives the agent while you stand beside it. Out loop: the clock and the agent run without you. An arrow labeled agentic engineering skill runs left to right" width="800">
+  <img src="images/09_in_near_out_loop.png" alt="In loop: you prompt every step. Near the loop: a clock drives the agent while you stand beside it. Out loop: the clock and the agent run without you." width="800">
 </p>
 
 The best engineers are moving from human **in** the loop, to human **near** the loop, to human **out** of the loop. In the loop, you prompt every step and the agent stops when you stop. Out of the loop, agents do 80% or more of the work on their own, but only once the right technology is in place, and jumping straight from in to out is a big step.
@@ -92,7 +89,7 @@ Three reusable packages in `apps/shared/packages/` carry the weight: `durable-ag
 
 | Step | Who | What happens |
 |---|---|---|
-| Tick | `dna-server-cron` | One idempotent `POST /v1/workflows/news-sweep` every minute, with the cron token (the only token that can start work). The schedule (every 5 minutes by default, 1 to 60 or off, set from the top bar, the CLI or the agent) decides which ticks start a sweep |
+| Tick | `dna-server-cron` | One idempotent `POST /v1/workflows/news-sweep` every minute, with the cron token (the only token that can start work). A sweep is due once the configured interval has elapsed since the last scheduled sweep. Change the interval or turn it off from the top bar, the CLI, or the agent. |
 | Sweep prompt | `news-desk` agent | `prompt_engineering/agents/news-desk/USER_PROMPT_news_sweep.md` lands in the agent's chat as a scheduled sweep |
 | Gather | `dna.news-sweep` durable task | Every source that is due, skipped when its content hash has not changed. Then 15 topics drawn by weight, each searched over the last 7 days, newest first. Nothing older than 14 days. When nothing new turns up, a second draw of topics runs before the sweep ends empty |
 | Gate | `dna.news-sweep` durable task | jev relevance and worth for every new item, publish dates read from the page when a feed has none |
@@ -308,23 +305,3 @@ just test live local               # live end to end on a device (real spend)
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
-
----
-
-## Want To Master Agentic Engineering?
-
-<p align="center">
-  <img src="images/16_the_next_leap_is_coming.png" alt="The Next Leap Is Coming: Phase 1 Augment, Phase 2 Automate, and a red question mark before Phase 3 Deprecate" width="800">
-</p>
-
-The next leap for engineers is coming soon.
-
-Join the [Early Sign-Up](https://agenticengineer.com/ia3-pre-launch?y=durnwag).
-
-Follow the [IndyDevDan YouTube channel](https://www.youtube.com/@indydevdan) to improve your agentic coding advantage.
-
----
-
-Stay Focused and Keep Building
-
-- IndyDevDan
