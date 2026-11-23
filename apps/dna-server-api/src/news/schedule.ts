@@ -1,10 +1,9 @@
-// The sweep schedule: how often a cron tick starts a sweep. The crontab ticks every minute (DNA_CRON_SCHEDULE,
-// "* * * * *" by default) and the API decides whether a tick is due: one sweep per interval slot, or none when the schedule
-// is off. Changing the interval is one settings write, never a crontab edit.
+// The cron tick checks whether the selected interval has elapsed since the last scheduled sweep.
+// Changing the interval updates the stored schedule and the next due time.
 import type { ScheduleState } from "@dna/sdk";
 import type { Store } from "../db/store.ts";
 
-export const SCHEDULE_PRESETS = [1, 5, 10, 15, 30, 60] as const;
+export const SCHEDULE_PRESETS = [1, 5, 10, 15, 30, 60, 360, 720, 1440] as const;
 /** Scheduled sweeps run this often until the reader picks another preset. */
 export const DEFAULT_EVERY = 5;
 /** The most cards one sweep presents until the reader picks another number. */
@@ -59,26 +58,31 @@ export class Schedule {
     return this.state();
   }
 
-  /** Whether a cron tick now starts a sweep: once per interval slot. */
+  private dueAt(every: number): number | undefined {
+    const last = this.deps.store.sweeps.lastCronAt();
+    if (!last) return undefined;
+    // Cron requests arrive shortly after the minute starts. Use the scheduled minute
+    // so sub-second request delays do not push each sweep back an extra tick.
+    return (Math.floor(Date.parse(last) / MINUTE) + every) * MINUTE;
+  }
+
+  /** Whether a cron tick can start a sweep. */
   due(now = Date.now()): { due: true } | { due: false; reason: string } {
     const every = this.every();
     if (every === null) return { due: false, reason: "Scheduled sweeps are off" };
-    const last = this.deps.store.sweeps.lastCronAt();
-    if (
-      last &&
-      Math.floor(Date.parse(last) / (every * MINUTE)) === Math.floor(now / (every * MINUTE))
-    )
-      return { due: false, reason: `Already swept this ${every} minute slot` };
+    const at = this.dueAt(every);
+    if (at !== undefined && now < at)
+      return { due: false, reason: `Next scheduled sweep is at ${new Date(at).toISOString()}` };
     return { due: true };
   }
 
-  /** The next tick that will start a sweep. */
+  /** The next tick that can start a sweep. */
   next(now = Date.now()): Date | undefined {
     const every = this.every();
     if (every === null) return undefined;
-    if (this.due(now).due)
-      return new Date((Math.floor(now / (this.tick * MINUTE)) + 1) * this.tick * MINUTE);
-    return new Date((Math.floor(now / (every * MINUTE)) + 1) * every * MINUTE);
+    const tick = this.tick * MINUTE;
+    const nextTick = (Math.floor(now / tick) + 1) * tick;
+    return new Date(Math.max(nextTick, this.dueAt(every) ?? nextTick));
   }
 
   state(now = Date.now()): ScheduleState {

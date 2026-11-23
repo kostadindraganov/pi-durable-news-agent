@@ -527,7 +527,7 @@ export type SendResult =
   | { submissionId: number; status: "unanswered"; reason?: string };
 
 export interface WorkflowResult {
-  /** not_due: a scheduled tick that is not due (the schedule is off, or this slot already swept). */
+  /** not_due: a scheduled tick that is not due (the schedule is off or the interval has yet to elapse). */
   status: "accepted" | "replay" | "skipped" | "not_due";
   sweep?: Sweep;
   reason?: string;

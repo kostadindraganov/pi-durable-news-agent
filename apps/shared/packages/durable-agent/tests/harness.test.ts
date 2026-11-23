@@ -3,21 +3,60 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { CATALOG, createModelCatalog, DEFAULT_MODEL, say } from "../src/index.ts";
+import { createModelCatalog, DEFAULT_MODEL, fetchFreeOpenRouterModels, say } from "../src/index.ts";
 import { ask, fauxHarness, tempDir } from "./helpers.ts";
 
-test("the catalog defaults to Haiku 5.5 and every id resolves in pi-ai 1.1.0 OpenRouter", () => {
-  assert.equal(DEFAULT_MODEL, "anthropic/claude-haiku-5.5");
-  assert.equal(CATALOG.length, 30);
-  const catalog = createModelCatalog({ provider: "openrouter" });
-  assert.deepEqual(catalog.defaultModel, {
+test("the live catalog exposes only free models and falls back from a paid default", () => {
+  const catalog = createModelCatalog({
     provider: "openrouter",
-    modelId: "anthropic/claude-haiku-5.5",
+    defaultModel: "anthropic/claude-haiku-5.5",
   });
+  assert.deepEqual(catalog.defaultModel, { provider: "openrouter", modelId: "openrouter/free" });
   const list = catalog.list();
-  assert.equal(list.length, 30);
-  assert.equal(list[0].contextWindow, 1_000_000);
-  assert.throws(() => catalog.ref("made/up-model"), /Unknown model/);
+  assert.equal(list[0].id, DEFAULT_MODEL);
+  assert.ok(list.some((model) => model.id.endsWith(":free")));
+  for (const model of list) {
+    assert.ok(model.id === DEFAULT_MODEL || model.id.endsWith(":free"));
+    assert.deepEqual(model.cost, { input: 0, output: 0 });
+    assert.equal(
+      catalog.models.getModel(catalog.provider, model.id)?.contextWindow,
+      model.contextWindow,
+    );
+  }
+  assert.throws(() => catalog.ref("anthropic/claude-haiku-5.5"), /Unknown model/);
+});
+
+test("discovery registers current free chat models with tool support", async (t) => {
+  const model = {
+    id: "test/new-model:free",
+    name: "New Model",
+    context_length: 65_536,
+    architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+    pricing: { prompt: "0", completion: "0" },
+    supported_parameters: ["tools"],
+  };
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      data: [
+        model,
+        { ...model, id: "test/no-tools:free", supported_parameters: [] },
+        { ...model, id: "test/paid:free", pricing: { prompt: "0", completion: "0.01" } },
+        { ...model, id: "test/paid" },
+      ],
+    }),
+  );
+  const catalog = createModelCatalog({
+    provider: "openrouter",
+    openRouterModels: await fetchFreeOpenRouterModels("test-key"),
+  });
+  assert.deepEqual(
+    catalog.list().map(({ id }) => id),
+    [DEFAULT_MODEL, model.id],
+  );
+  assert.equal(
+    catalog.models.getModel(catalog.provider, model.id)?.contextWindow,
+    model.context_length,
+  );
 });
 
 test("the harness stores in WAL, answers on the faux model, and offers no bash or file tools", async () => {

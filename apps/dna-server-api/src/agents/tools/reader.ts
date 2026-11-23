@@ -6,7 +6,7 @@ import { defineAppTool, once, toolError, toolText } from "@dna/durable-agent";
 import { HFS_CATEGORIES, TAB_BYS, type Card, type Keyword, type Source } from "@dna/sdk";
 import type { Deps } from "../../deps.ts";
 import { clamp } from "../../db/repos/taste.ts";
-import { MAX_CARDS } from "../../news/schedule.ts";
+import { MAX_CARDS, SCHEDULE_PRESETS } from "../../news/schedule.ts";
 import { applyFeedback } from "../../news/taste.ts";
 
 const VOTES = ["up", "down"] as const;
@@ -270,15 +270,14 @@ export function openTab(deps: Deps) {
   });
 }
 
-const EVERY = ["1", "5", "10", "15", "30", "60", "off"] as const;
+const EVERY = [...SCHEDULE_PRESETS.map(String), "off"];
 
 export function setSchedule(deps: Deps) {
   return defineAppTool({
     name: "set_schedule",
     returns:
       "Text: how often scheduled sweeps now run, how many cards each presents, and when the next one starts.",
-    description:
-      "Change the sweep schedule, like the menus in the reader's top bar. every: how often scheduled sweeps run, every 1, 5, 10, 15, 30 or 60 minutes, or off. cards: the most cards one sweep presents, 1 to 30 (jev ranks the candidates and keeps the top ones). Give either or both. Use it only when the reader asks.",
+    description: `Change the sweep schedule, like the menus in the reader's top bar. every: the minutes between scheduled sweeps (${SCHEDULE_PRESETS.join(", ")}), or off. cards: the most cards one sweep presents, 1 to 30 (jev ranks the candidates and keeps the top ones). Give either or both. Use it only when the reader asks.`,
     parameters: Type.Object({
       every: Type.Optional(literals(EVERY)),
       cards: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_CARDS })),

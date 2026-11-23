@@ -132,10 +132,7 @@ test("the reader's setting picks the count when the reader names none", async ()
   const started = await startDeepResearch({
     question: "Who confirms the 38 verified attack paths?",
   });
-  assert.match(
-    started.text,
-    /2 deep-research subagents on anthropic\/claude-haiku-5\.5, thinking xhigh/,
-  );
+  assert.match(started.text, /2 deep-research subagents on openrouter\/free, thinking xhigh/);
   await until(
     async () => (await deepEntries(app.main, started.researchId)).replies.length >= 2,
     60_000,

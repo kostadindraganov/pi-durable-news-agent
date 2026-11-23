@@ -136,9 +136,9 @@ export function createAgents(deps: Deps): Agents {
   });
   const researcher = (): AgentChange => ({
     model:
-      deps.catalog.provider === "faux"
-        ? deps.catalog.defaultModel
-        : deps.catalog.ref(deps.config.researchModel),
+      deps.catalog.info(deps.config.researchModel) && deps.catalog.provider !== "faux"
+        ? deps.catalog.ref(deps.config.researchModel)
+        : deps.catalog.defaultModel,
     thinkingLevel: "low",
     extensions: [newsResearcher, observe],
   });

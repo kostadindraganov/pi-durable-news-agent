@@ -4,7 +4,7 @@ import { Check, X } from "@lucide/vue";
 import type { ModelInfo } from "@dna/sdk";
 import { agentState, api, attempt, feed, info, notify, ui } from "../client/store";
 
-const DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
+const DEFAULT_MODEL = "openrouter/free";
 const search = ref("");
 const models = computed(() => info.value?.models ?? []);
 const filtered = computed(() =>
@@ -47,8 +47,8 @@ async function choose(m: ModelInfo) {
           <div>
             <strong>{{ m.name }}</strong>
             <small
-              >{{ m.tier }} tier, {{ m.provider }}, {{ Math.round(m.contextWindow / 1000) }}k
-              context</small
+              >{{ m.tier === "Free" ? "Free" : `${m.tier} tier` }}, {{ m.provider }},
+              {{ Math.round(m.contextWindow / 1000) }}k context</small
             >
           </div>
           <span v-if="m.id === DEFAULT_MODEL" class="badge">Default</span>

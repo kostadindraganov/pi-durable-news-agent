@@ -72,11 +72,13 @@ test("the schedule: presets for a 1 minute tick, PATCH a preset or off, and an o
   const start = await s.client.schedule();
   assert.equal(start.everyMinutes, 5);
   assert.equal(start.tickMinutes, 1);
-  assert.deepEqual(start.presets, [1, 5, 10, 15, 30, 60]);
+  assert.deepEqual(start.presets, [1, 5, 10, 15, 30, 60, 360, 720, 1440]);
   assert.ok(start.nextSweepAt);
   await assert.rejects(s.client.setSchedule(7), /everyMinutes must be one of 1, 5, 10, 15, 30, 60/);
-  assert.equal((await s.client.setSchedule(30)).everyMinutes, 30);
-  assert.equal((await s.client.agent()).schedule.everyMinutes, 30);
+  for (const minutes of [30, 360, 720, 1440]) {
+    assert.equal((await s.client.setSchedule(minutes)).everyMinutes, minutes);
+    assert.equal((await s.client.agent()).schedule.everyMinutes, minutes);
+  }
   const off = await s.client.setSchedule(null);
   assert.equal(off.everyMinutes, null);
   assert.equal(off.nextSweepAt, undefined);

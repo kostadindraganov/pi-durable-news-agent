@@ -9,6 +9,7 @@ import type { CompactionState } from "@dna/sdk";
 import {
   createModelCatalog,
   DEFAULT_POINTS,
+  fetchFreeOpenRouterModels,
   fit,
   fits,
   installScriptedFaux,
@@ -25,6 +26,7 @@ import type { Config } from "./config.ts";
 import { openStore } from "./db/store.ts";
 import type { Deps } from "./deps.ts";
 import { Bus } from "./events.ts";
+import { deepResearchSetting, setDeepResearch } from "./news/deep-research.ts";
 import { Dates } from "./news/dates.ts";
 import { fixtureDecide, fixtureHttp } from "./news/fixtures.ts";
 import { Judge } from "./news/hfs.ts";
@@ -69,7 +71,15 @@ export async function openApp(config: Config, options: { log?: Logger } = {}): P
   const log = options.log ?? createLogger("api").child({ device: config.device });
   const store = openStore(config.dataDir, config.configDir);
   const http = config.searchMode === "fixture" ? fixtureHttp() : liveHttp(log);
+  const openRouterModels =
+    config.provider === "openrouter" && config.openRouterKey
+      ? await fetchFreeOpenRouterModels(config.openRouterKey).catch((error) => {
+          log.warn("models.discovery_failed", { error: String(error) });
+          return undefined;
+        })
+      : undefined;
   const catalog = createModelCatalog({
+    openRouterModels,
     provider: config.provider,
     installFaux: (models) => installScriptedFaux(models, fauxRules()),
     defaultModel: config.provider === "faux" ? undefined : config.model,
@@ -102,6 +112,12 @@ export async function openApp(config: Config, options: { log?: Logger } = {}): P
   });
   const bus = new Bus();
   const quick = new Quick({ catalog, store, log });
+  if (config.provider === "openrouter") {
+    const { modelId } = catalog.defaultModel;
+    if (!catalog.info(quick.setting().model)) quick.set({ model: modelId });
+    if (!catalog.info(deepResearchSetting(store).model))
+      setDeepResearch(store, log, { model: modelId });
+  }
   const dates = new Dates({ http, store, log, quick });
   const deps: Deps = {
     config,
@@ -137,12 +153,24 @@ export async function openApp(config: Config, options: { log?: Logger } = {}): P
   const main = await harness.harness.root(ctx, {
     agent: { model: catalog.defaultModel, thinkingLevel: "low" },
   });
+  const savedModel = (await main.agent(ctx)).model;
+  if (
+    config.provider === "openrouter" &&
+    (!savedModel || savedModel.provider !== catalog.provider || !catalog.info(savedModel.modelId))
+  ) {
+    await main.configure({ model: catalog.defaultModel }, ctx);
+    store.settings.set("model", catalog.defaultModel.modelId);
+  }
   const mainModel = async () => {
     const agent = await main.agent(ctx);
     const id = agent.model?.modelId ?? catalog.defaultModel.modelId;
     return { id, window: catalog.info(id)?.contextWindow ?? 1_000_000 };
   };
   window = (await mainModel()).window;
+  if (!fits(window, compaction.points)) {
+    compaction.points = fit(window, compaction.points);
+    store.settings.set("compaction", compaction);
+  }
   harness.harness.resume();
 
   const stallTimer = setInterval(() => {

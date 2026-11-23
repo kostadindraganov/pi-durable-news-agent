@@ -3,33 +3,42 @@ import { test } from "node:test";
 import { Schedule } from "../src/news/schedule.ts";
 import { tempStore } from "./helpers.ts";
 
-test("a scheduled tick is due once per interval slot, never when off", async () => {
+test("scheduled sweeps are spaced from the last cron sweep and react to interval changes", async () => {
   const { store, cleanup } = tempStore();
   try {
     const schedule = new Schedule({ store, cronSchedule: "*/5 * * * *" });
     assert.equal(schedule.every(), 5, "every 5 minutes by default");
-    assert.equal(
-      new Schedule({ store, cronSchedule: "* * * * *" }).presets().join(),
-      "1,5,10,15,30,60",
+    assert.deepEqual(
+      new Schedule({ store, cronSchedule: "* * * * *" }).presets(),
+      [1, 5, 10, 15, 30, 60, 360, 720, 1440],
     );
-    schedule.set({ everyMinutes: 15 });
-    const now = Date.now();
-    const slot = Math.floor(now / 900_000) * 900_000;
+    const now = Date.parse("2026-11-23T23:46:21Z");
     assert.deepEqual(schedule.due(now), { due: true }, "no cron sweep yet");
-    store.sweeps.create({ requestId: "c1", trigger: "cron", status: "completed" });
-    assert.equal(schedule.due(now).due, false, "this 15 minute slot already swept");
-    assert.equal(schedule.due(slot + 900_000).due, true, "the next slot is due");
-    assert.equal(schedule.next(now)!.getTime(), slot + 900_000);
+    assert.equal(schedule.next(now)?.toISOString(), "2026-11-23T23:50:00.000Z");
+    const cron = store.sweeps.create({ requestId: "c1", trigger: "cron", status: "completed" });
+    const last = Date.parse("2026-11-23T23:00:00Z");
+    store.db
+      .prepare("UPDATE sweeps SET created_at = ? WHERE id = ?")
+      .run(new Date(last + 500).toISOString(), cron.id);
     store.sweeps.create({ requestId: "c2", trigger: "cron", status: "skipped" });
-    assert.equal(schedule.due(slot + 900_000).due, true, "a skipped sweep does not use up a slot");
+    store.sweeps.create({ requestId: "m1", trigger: "manual", status: "completed" });
+    schedule.set({ everyMinutes: 15 });
+    assert.deepEqual(schedule.due(now), { due: true }, "a shorter interval is already due");
+    assert.equal(schedule.next(now)?.toISOString(), "2026-11-23T23:50:00.000Z");
+    for (const everyMinutes of [360, 720, 1440]) {
+      schedule.set({ everyMinutes });
+      const next = last + everyMinutes * 60_000;
+      assert.equal(schedule.due(now).due, false);
+      assert.equal(schedule.next(now)?.getTime(), next);
+      assert.equal(schedule.due(next - 1).due, false);
+      assert.equal(schedule.due(next).due, true);
+    }
     schedule.set({ everyMinutes: null });
-    assert.deepEqual(schedule.due(slot + 900_000), {
-      due: false,
-      reason: "Scheduled sweeps are off",
-    });
-    assert.equal(
-      new Schedule({ store, cronSchedule: "*/15 * * * *" }).presets().join(),
-      "15,30,60",
+    assert.deepEqual(schedule.due(now), { due: false, reason: "Scheduled sweeps are off" });
+    assert.equal(schedule.next(now), undefined);
+    assert.deepEqual(
+      new Schedule({ store, cronSchedule: "*/15 * * * *" }).presets(),
+      [15, 30, 60, 360, 720, 1440],
     );
   } finally {
     cleanup();

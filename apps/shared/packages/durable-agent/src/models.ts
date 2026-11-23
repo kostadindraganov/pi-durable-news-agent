@@ -1,4 +1,4 @@
-// The model catalog: Haiku 5.5 (default) plus 29 more models, all through OpenRouter.
+// OpenRouter free chat models for live inference and a deterministic catalog for offline use.
 // DNA_PROVIDER=faux swaps in a free deterministic model with the same 1M window.
 import { createModels, type MutableModels } from "@earendil-works/pi-ai/models";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
@@ -18,11 +18,11 @@ export interface ModelInfo extends CatalogEntry {
   cost: { input: number; output: number };
 }
 
-export const DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
+export const DEFAULT_MODEL = "openrouter/free";
 export const FAUX_WINDOW = 1_000_000;
 export const FAUX_MODEL = "faux-haiku";
 
-export const CATALOG: readonly CatalogEntry[] = [
+const playground: readonly CatalogEntry[] = [
   { id: "anthropic/claude-haiku-5.5", name: "Claude Haiku 5.5", tier: "A", icon: "anthropic.png" },
   { id: "anthropic/claude-opus-5.5", name: "Claude Opus 5.5", tier: "S+", icon: "anthropic.png" },
   {
@@ -75,6 +75,75 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
 ];
 
+type OpenRouterModel = ReturnType<ReturnType<typeof openrouterProvider>["getModels"]>[number];
+
+const openrouter = openrouterProvider();
+const bundled = openrouter.getModels();
+const router = bundled.find((model) => model.id === DEFAULT_MODEL)!;
+const bundledFree = bundled.filter(
+  (model) => model.id.endsWith(":free") && model.cost.input === 0 && model.cost.output === 0,
+);
+
+function freeEntry(model: OpenRouterModel): CatalogEntry {
+  return { id: model.id, name: model.name, tier: "Free", icon: "lab.png" };
+}
+
+export const CATALOG: readonly CatalogEntry[] = [
+  ...[router, ...bundledFree].map(freeEntry),
+  ...playground,
+];
+
+interface OpenRouterListing {
+  id: string;
+  name: string;
+  context_length: number;
+  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+  pricing?: { prompt?: string; completion?: string; request?: string };
+  supported_parameters?: string[];
+  top_provider?: { max_completion_tokens?: number | null };
+}
+
+/** Use the current catalog when reachable and the bundled catalog when discovery fails. */
+export async function fetchFreeOpenRouterModels(apiKey: string): Promise<OpenRouterModel[]> {
+  const response = await fetch("https://openrouter.ai/api/v1/models", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) throw new Error(`OpenRouter models endpoint returned HTTP ${response.status}`);
+  const { data } = (await response.json()) as { data: OpenRouterListing[] };
+  return data.flatMap((entry): OpenRouterModel[] => {
+    const { id, architecture, pricing, supported_parameters: parameters } = entry;
+    if (
+      !id.endsWith(":free") ||
+      !architecture?.input_modalities?.includes("text") ||
+      !architecture.output_modalities?.includes("text") ||
+      !parameters?.includes("tools") ||
+      !pricing?.prompt ||
+      Number(pricing.prompt) !== 0 ||
+      !pricing.completion ||
+      Number(pricing.completion) !== 0 ||
+      Number(pricing.request ?? 0) !== 0 ||
+      !Number.isInteger(entry.context_length) ||
+      entry.context_length <= 0
+    )
+      return [];
+    const known = bundledFree.find((model) => model.id === id);
+    return [
+      {
+        ...router,
+        ...known,
+        id,
+        name: entry.name,
+        contextWindow: entry.context_length,
+        maxTokens:
+          entry.top_provider?.max_completion_tokens ?? known?.maxTokens ?? router.maxTokens,
+        input: architecture.input_modalities.includes("image") ? ["text", "image"] : ["text"],
+        reasoning: parameters.includes("reasoning") || parameters.includes("include_reasoning"),
+      },
+    ];
+  });
+}
+
 export interface ModelCatalog {
   readonly models: MutableModels;
   readonly provider: "openrouter" | "faux";
@@ -89,6 +158,7 @@ export function createModelCatalog(options: {
   provider: "openrouter" | "faux";
   installFaux?: (models: MutableModels) => void;
   defaultModel?: string;
+  openRouterModels?: OpenRouterModel[];
 }): ModelCatalog {
   const models = createModels();
   if (options.provider === "faux") {
@@ -119,34 +189,28 @@ export function createModelCatalog(options: {
       info: (id) => all.find((m) => m.id === id),
     };
   }
-  const provider = openrouterProvider();
-  models.setProvider(provider);
-  const known = provider.getModels();
-  const missing = CATALOG.filter((c) => !known.some((m) => m.id === c.id)).map((c) => c.id);
-  if (missing.length) throw new Error(`OpenRouter catalog is missing: ${missing.join(", ")}`);
-  const list = () =>
-    CATALOG.map((c) => {
-      const m = known.find((x) => x.id === c.id)!;
-      return {
-        ...c,
-        provider: "openrouter",
-        contextWindow: m.contextWindow,
-        reasoning: m.reasoning,
-        cost: { input: m.cost.input, output: m.cost.output },
-      };
-    });
-  const defaultId = options.defaultModel ?? DEFAULT_MODEL;
+  const free = [router, ...(options.openRouterModels ?? bundledFree)];
+  models.setProvider({ ...openrouter, getModels: () => free, getAllModels: () => free });
+  const list = free.map((model): ModelInfo => ({
+    ...freeEntry(model),
+    provider: "openrouter",
+    contextWindow: model.contextWindow,
+    reasoning: model.reasoning,
+    cost: { input: model.cost.input, output: model.cost.output },
+  }));
+  const info = (id: string) => list.find((model) => model.id === id);
   const ref = (id: string): ModelRef => {
-    if (!CATALOG.some((c) => c.id === id))
-      throw new Error(`Unknown model ${id}. Pick one of the ${CATALOG.length} catalog models.`);
+    if (!info(id)) throw new Error(`Unknown model ${id}. Pick a model from the free catalog.`);
     return { provider: "openrouter", modelId: id };
   };
+  const defaultId =
+    options.defaultModel && info(options.defaultModel) ? options.defaultModel : DEFAULT_MODEL;
   return {
     models,
     provider: "openrouter",
     defaultModel: ref(defaultId),
-    list,
+    list: () => list,
     ref,
-    info: (id) => list().find((m) => m.id === id),
+    info,
   };
 }

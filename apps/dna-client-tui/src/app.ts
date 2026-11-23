@@ -406,7 +406,7 @@ export class App {
               "models",
               (this.info?.models ?? []).map(
                 (m) =>
-                  `${m.id === current ? c.accent("●") : " "} ${m.id.padEnd(40)} ${m.name}${m.id === "anthropic/claude-haiku-5.5" ? c.muted("  default") : ""}`,
+                  `${m.id === current ? c.accent("●") : " "} ${m.id.padEnd(40)} ${m.name}${m.id === "openrouter/free" ? c.muted("  default") : ""}`,
               ),
             );
           }

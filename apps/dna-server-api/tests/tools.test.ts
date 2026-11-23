@@ -387,7 +387,7 @@ test("set_schedule changes how often sweeps run and refuses intervals the tick c
     await callTool(app.main, "set_schedule", { cards: 7 });
     const bad = await callTool(app.main, "set_schedule", { every: "7" });
     assert.equal(bad.isError, true);
-    assert.match(bad.text, /must be one of: 1, 5, 10, 15, 30, 60, off/);
+    assert.match(bad.text, /must be one of: 1, 5, 10, 15, 30, 60, 360, 720, 1440, off/);
     await callTool(app.main, "set_schedule", { every: "5" });
   } finally {
     stop();

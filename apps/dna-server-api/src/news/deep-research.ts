@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AssistantEntry, defineTask, type ConversationId } from "@earendil-works/pi-durable";
-import { answerTextOf, loadPrompt, runParallel } from "@dna/durable-agent";
+import { DEFAULT_MODEL, answerTextOf, loadPrompt, runParallel } from "@dna/durable-agent";
 import type { Logger } from "@dna/sdk/node";
 import type { Store } from "../db/store.ts";
 import type { Deps } from "../deps.ts";
@@ -24,7 +24,7 @@ export interface DeepResearchSetting {
 }
 
 export const DEFAULT_DEEP_RESEARCH: DeepResearchSetting = {
-  model: "anthropic/claude-haiku-5.5",
+  model: DEFAULT_MODEL,
   thinkingLevel: "xhigh",
   count: 1,
 };

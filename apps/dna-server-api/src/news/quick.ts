@@ -1,6 +1,6 @@
 // The quick model: one-shot jobs (reading a publish date out of a page today) on a small, cheap model the reader picks
-// next to the agent's model. Saved in settings; Haiku 5.5 with thinking off by default.
-import type { ModelCatalog } from "@dna/durable-agent";
+// next to the agent's model. Saved in settings; the free router with thinking off by default.
+import { DEFAULT_MODEL, type ModelCatalog } from "@dna/durable-agent";
 import type { Logger } from "@dna/sdk/node";
 import type { Store } from "../db/store.ts";
 
@@ -13,7 +13,7 @@ export interface QuickSetting {
 }
 
 export const DEFAULT_QUICK: QuickSetting = {
-  model: "anthropic/claude-haiku-5.5",
+  model: DEFAULT_MODEL,
   thinkingLevel: "off",
 };
 

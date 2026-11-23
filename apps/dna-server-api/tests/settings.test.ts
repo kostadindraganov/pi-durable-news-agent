@@ -46,13 +46,13 @@ test("model and thinking changes validate against the catalog", async () => {
   const state = await s.client.configure({ model: "faux-haiku", thinkingLevel: "medium" });
   assert.equal(state.model, "faux-haiku");
   assert.equal(state.thinkingLevel, "medium");
-  assert.deepEqual(state.quick, { model: "anthropic/claude-haiku-5.5", thinkingLevel: "off" });
+  assert.deepEqual(state.quick, { model: "openrouter/free", thinkingLevel: "off" });
   await fails(s.client.configure({ quickModel: "nope/x" }), /Unknown model nope\/x/);
   const quick = await s.client.configure({ quickModel: "openai/gpt-6-luna", quickThinking: "low" });
   assert.deepEqual(quick.quick, { model: "openai/gpt-6-luna", thinkingLevel: "low" });
   assert.equal(quick.model, "faux-haiku", "the quick model leaves the agent's model alone");
   assert.deepEqual(quick.deepResearch, {
-    model: "anthropic/claude-haiku-5.5",
+    model: "openrouter/free",
     thinkingLevel: "xhigh",
     count: 1,
   });

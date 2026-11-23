@@ -21,13 +21,21 @@ const busy = computed(() => agentState.value?.busy ?? false);
 const schedule = computed(() => agentState.value?.schedule);
 const countdown = computed(() => {
   if (schedule.value && schedule.value.everyMinutes === null) return "scheduled sweeps off";
-  const at = agentState.value?.nextSweepAt ?? info.value?.nextSweepAt;
+  const at = schedule.value ? schedule.value.nextSweepAt : info.value?.nextSweepAt;
   if (!at) return "no sweep scheduled";
-  const s = Math.max(0, Math.round((Date.parse(at) - now.value) / 1000));
-  return `next sweep in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  const remaining = Math.max(0, Math.round((Date.parse(at) - now.value) / 1000));
+  const hours = Math.floor(remaining / 3600);
+  const minutes = Math.floor(remaining / 60) % 60;
+  const seconds = remaining % 60;
+  const duration = hours ? `${hours}h ${minutes}m` : minutes ? `${minutes}m` : "";
+  return `next sweep in ${duration ? `${duration} ` : ""}${seconds}s`;
 });
-const every = (m: number) =>
-  m === 60 ? "Every hour" : m === 1 ? "Every minute" : `Every ${m} min`;
+function every(minutes: number): string {
+  if (minutes === 1) return "Every minute";
+  if (minutes === 60) return "Every hour";
+  if (minutes % 60 === 0) return `Every ${minutes / 60} hours`;
+  return `Every ${minutes} min`;
+}
 const CARD_CHOICES = [3, 5, 7, 10, 15, 20, 30];
 async function setCards(value: string) {
   const next = await attempt(() => api.setCardsPerSweep(Number(value)));

@@ -1,6 +1,7 @@
 // Server configuration from the root .env and flags. Every default here is documented in .env.example.
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { DEFAULT_MODEL } from "@dna/durable-agent";
 import { loadNetwork, repoRoot } from "@dna/sdk/node";
 
 export interface Config {
@@ -30,6 +31,7 @@ export interface Config {
   imageModel: string;
   imageQuality: string;
   openaiKey?: string;
+  openRouterKey?: string;
   cronSchedule: string;
   clientToken: string;
   cronToken: string;
@@ -68,17 +70,19 @@ export function loadConfig(argv = process.argv.slice(2), env = process.env): Con
     promptsDir: join(APP_DIR, "prompt_engineering"),
     provider,
     jevBackend:
-      (env.JEV_BACKEND as Config["jevBackend"]) ?? (searchMode === "fixture" ? "fixture" : "auto"),
+      (env.JEV_BACKEND as Config["jevBackend"]) ??
+      (searchMode === "fixture" ? "fixture" : "openrouter"),
     searchMode,
     firecrawlKey: env.FIRECRAWL_API_KEY?.trim() || undefined,
     sweepCredits: int(env.DNA_FIRECRAWL_SWEEP_CREDITS, 5),
     dailyCredits: int(env.DNA_FIRECRAWL_DAILY_CREDITS, 40),
     sweepQueries: int(env.DNA_SWEEP_QUERIES, 15),
     maxSavedSources: int(env.DNA_MAX_SAVED_SOURCES, 25),
-    model: env.DNA_MODEL ?? "anthropic/claude-haiku-5.5",
-    researchModel: env.DNA_RESEARCH_MODEL ?? env.DNA_MODEL ?? "anthropic/claude-haiku-5.5",
+    model: env.DNA_MODEL ?? DEFAULT_MODEL,
+    researchModel: env.DNA_RESEARCH_MODEL ?? env.DNA_MODEL ?? DEFAULT_MODEL,
     imageModel: env.DNA_IMAGE_MODEL ?? "gpt-image-2.5-flare",
     imageQuality: env.DNA_IMAGE_QUALITY ?? "low",
+    openRouterKey: env.OPENROUTER_API_KEY?.trim() || undefined,
     openaiKey: env.OPENAI_API_KEY?.trim() || undefined,
     cronSchedule: env.DNA_CRON_SCHEDULE ?? "* * * * *",
     clientToken: env.DNA_CLIENT_TOKEN?.trim() ?? "",

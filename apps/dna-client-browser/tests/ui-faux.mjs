@@ -358,7 +358,7 @@ try {
   check(
     (await scheduleSelect.inputValue()) === "5" &&
       (await scheduleSelect.locator("option").allInnerTexts()).join(",") ===
-        "Every minute,Every 5 min,Every 10 min,Every 15 min,Every 30 min,Every hour,Off",
+        "Every minute,Every 5 min,Every 10 min,Every 15 min,Every 30 min,Every hour,Every 6 hours,Every 12 hours,Every 24 hours,Off",
     "the top bar schedule shows every 5 minutes with the presets",
   );
   const cardsSelect = page.getByLabel("Cards per sweep");
@@ -370,6 +370,19 @@ try {
     "picking cards per sweep reaches the API",
   );
   await cardsSelect.selectOption("7");
+  const [scheduleChanged] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/v1/schedule") &&
+        response.request().method() === "PATCH" &&
+        response.request().postDataJSON()?.everyMinutes === 360,
+    ),
+    scheduleSelect.selectOption("360"),
+  ]);
+  check(
+    scheduleChanged.ok() && (await call("GET", "/v1/schedule")).everyMinutes === 360,
+    "picking the six-hour schedule reaches the API",
+  );
   await scheduleSelect.selectOption("off");
   await page.locator(".agent-status", { hasText: "scheduled sweeps off" }).waitFor();
   check(
@@ -415,9 +428,9 @@ try {
   );
   const quickModel = page.getByLabel("Quick tasks model");
   check(
-    (await quickModel.inputValue()) === "anthropic/claude-haiku-5.5" &&
+    (await quickModel.inputValue()) === "openrouter/free" &&
       (await page.getByLabel("Quick tasks thinking level").inputValue()) === "off",
-    "the Model panel shows the quick tasks model (Haiku 5.5, thinking off)",
+    "the Model panel shows the quick tasks model (free router, thinking off)",
   );
   await quickModel.selectOption("openai/gpt-6-luna");
   await sleep(400);
@@ -429,11 +442,10 @@ try {
   const deepBox = await page.getByRole("group", { name: "Deep research" }).boundingBox();
   check(
     deepBox.y > quickBox.y &&
-      (await page.getByLabel("Deep research model").inputValue()) ===
-        "anthropic/claude-haiku-5.5" &&
+      (await page.getByLabel("Deep research model").inputValue()) === "openrouter/free" &&
       (await page.getByLabel("Deep research thinking level").inputValue()) === "xhigh" &&
       (await page.getByLabel("Deep research count").inputValue()) === "1",
-    "the Deep research row sits under Quick tasks (Haiku 5.5, thinking xhigh, count 1)",
+    "the Deep research row sits under Quick tasks (free router, thinking xhigh, count 1)",
   );
   await page.getByLabel("Deep research count").selectOption("5");
   await page.getByLabel("Deep research thinking level").selectOption("high");
