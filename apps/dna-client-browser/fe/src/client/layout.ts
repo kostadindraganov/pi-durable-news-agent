@@ -3,7 +3,7 @@
 // the search box or when the agent calls open_tab. highlight_item switches to News and flashes one card.
 import { nextTick, reactive, ref, watch } from "vue";
 import type { TabBy } from "@dna/sdk";
-import { notify, onFrame } from "./store";
+import { feed, notify, onFrame } from "./store";
 
 export type FeedTab =
   | { kind: "timeline"; id: number; title: string }
@@ -19,9 +19,9 @@ export interface Layout {
   agentWidth: number;
   /** The composer's Model toggle: model and thinking controls shown. */
   modelBar: boolean;
-  /** Open tabs, after the News tab. */
+  /** Open tabs, after News and Read. */
   tabs: FeedTab[];
-  /** The active tab: "news" or a tab key. */
+  /** The active tab: "news", "read" or a tab key. */
   tab: string;
 }
 
@@ -47,7 +47,11 @@ function load(): Layout {
         t.kind === "timeline" ? Number.isInteger(t.id) : typeof t.value === "string",
       );
     if (typeof merged.tab === "number") merged.tab = `timeline-${merged.tab}`;
-    if (merged.tab !== "news" && !merged.tabs.some((t) => tabKey(t) === merged.tab))
+    if (
+      merged.tab !== "news" &&
+      merged.tab !== "read" &&
+      !merged.tabs.some((t) => tabKey(t) === merged.tab)
+    )
       merged.tab = "news";
     delete (merged as Partial<Layout> & { storiesSplit?: number }).storiesSplit;
     return merged;
@@ -108,10 +112,10 @@ export function closeTab(key: string) {
 export const highlighted = ref<number>();
 let highlightTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** Switch to News, scroll the card to the middle of the list and highlight it. */
+/** Open the card’s feed tab, scroll to it and highlight it. */
 export function highlight(cardId: number) {
   layout.feed = true;
-  layout.tab = "news";
+  layout.tab = feed.card(cardId)?.read ? "read" : "news";
   highlighted.value = cardId;
   clearTimeout(highlightTimer);
   highlightTimer = setTimeout(() => (highlighted.value = undefined), 4000);

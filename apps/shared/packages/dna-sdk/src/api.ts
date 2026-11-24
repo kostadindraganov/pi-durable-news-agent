@@ -65,6 +65,8 @@ export interface Card {
   itemIds?: number[];
   /** Historical development or coverage card, retained for detail/timelines but absent from the main feed. */
   hiddenFromFeed?: boolean;
+  /** Reader's read state, independent of story grouping and feedback. */
+  read?: boolean;
   sources?: {
     itemId: number;
     title: string;

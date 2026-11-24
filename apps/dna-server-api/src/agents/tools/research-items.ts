@@ -1,12 +1,63 @@
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
-import type { AgentChange } from "@earendil-works/pi-durable";
+import type { Context } from "@earendil-works/chord";
+import type { AgentChange, ToolExecutionApi } from "@earendil-works/pi-durable";
 import { defineAppTool, loadPrompt, spawnSubagents, toolError, toolText } from "@dna/durable-agent";
-import { StoryMatcher } from "../../news/stories.ts";
+import { needsRelationshipReview, StoryMatcher } from "../../news/stories.ts";
 import type { Deps } from "../../deps.ts";
 
 export const MAX_BATCHES = 4;
 export const MAX_PER_BATCH = 4;
+
+interface ResearchBatch {
+  item_ids: number[];
+  focus?: string;
+}
+
+export async function researchItemBatches(
+  deps: Deps,
+  child: () => AgentChange,
+  sweepId: number | undefined,
+  batches: ResearchBatch[],
+  api: ToolExecutionApi,
+  ctx: Context,
+) {
+  const ids = [...new Set(batches.flatMap((batch) => batch.item_ids))];
+  const items = deps.store.news.items(ids);
+  for (const item of items)
+    if (item.status === "candidate") deps.store.news.updateItem(item.id, { status: "researching" });
+  const agentsDir = join(deps.config.promptsDir, "agents");
+  const specs = batches.map((batch) => ({
+    prompt: loadPrompt(agentsDir, "news-researcher", "USER_PROMPT_research.md", {
+      sweep_id: sweepId ?? "outside a scheduled sweep",
+      items: batch.item_ids
+        .map((id) => {
+          const item = items.find((i) => i.id === id)!;
+          const related = needsRelationshipReview(item)
+            ? deps.store.news.reviewMatches(item.id)
+            : [];
+          return `#${item.id} ${item.title} (${item.sourceName ?? "web"}) ${item.url}${related.length ? `\nPossible overlap to investigate: ${related.map((r) => `"${r.title}" ${r.url}`).join("; ")}` : ""}`;
+        })
+        .join("\n"),
+      focus: batch.focus ?? "claims, versions, dates, availability and what an engineer should do",
+    }),
+    agent: child(),
+  }));
+  const results = await spawnSubagents(api, ctx, specs, {
+    requestPrefix: `research:${api.taskId}`,
+    concurrency: MAX_BATCHES,
+  });
+  const matcher = new StoryMatcher(deps);
+  const relationships: string[] = [];
+  for (const item of deps.store.news.items(ids)) {
+    const action = await matcher.review(item, sweepId);
+    if (action)
+      relationships.push(
+        `#${item.id} relationship after research: ${action === "uncertain" ? "inconclusive, keep separate" : action}`,
+      );
+  }
+  return { results, relationships };
+}
 
 export function researchItems(deps: Deps, child: () => AgentChange) {
   return defineAppTool({
@@ -35,41 +86,15 @@ export function researchItems(deps: Deps, child: () => AgentChange) {
         return toolError(`No items ${missing.map((m) => `#${m}`).join(", ")}.`, [
           "Use item ids returned by run_news_sweep.",
         ]);
-      for (const item of items)
-        if (item.status === "candidate")
-          deps.store.news.updateItem(item.id, { status: "researching" });
-      const agentsDir = join(deps.config.promptsDir, "agents");
-      const specs = args.batches.map((batch) => ({
-        prompt: loadPrompt(agentsDir, "news-researcher", "USER_PROMPT_research.md", {
-          sweep_id: args.sweep_id,
-          items: batch.item_ids
-            .map((id) => {
-              const item = items.find((i) => i.id === id)!;
-              const related = deps.store.news.reviewMatches(item.id);
-              return `#${item.id} ${item.title} (${item.sourceName ?? "web"}) ${item.url}${related.length ? `\nPossible overlap to investigate: ${related.map((r) => `#${r.id} ${r.title} ${r.url}`).join("; ")}` : ""}`;
-            })
-            .join("\n"),
-          focus:
-            batch.focus ?? "claims, versions, dates, availability and what an engineer should do",
-        }),
-        agent: child(),
-      }));
-      const results = await spawnSubagents(api, ctx, specs, {
-        requestPrefix: `research:${api.taskId}`,
-        concurrency: MAX_BATCHES,
-      });
+      const { results, relationships } = await researchItemBatches(
+        deps,
+        child,
+        args.sweep_id,
+        args.batches,
+        api,
+        ctx,
+      );
       await api.details({ children: results.map((r) => r.conversationId) }, ctx);
-      const matcher = new StoryMatcher(deps);
-      const relationships: string[] = [];
-      for (const id of ids) {
-        const item = deps.store.news.item(id)!;
-        if (!item.lastError?.startsWith("Story relationship uncertain")) continue;
-        const matches = deps.store.news.reviewMatches(id);
-        if (matches.length)
-          relationships.push(
-            `#${id} relationship after research: ${await matcher.classify(item, matches, args.sweep_id, true)}`,
-          );
-      }
       const lines = ids.map((id) => {
         const f = deps.store.news.findings(id).at(-1);
         if (!f) return `#${id} no findings reported`;

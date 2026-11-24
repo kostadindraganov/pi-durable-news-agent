@@ -44,24 +44,6 @@ before(async () => {
 });
 after(() => cleanup());
 
-test("present_news requires research for uncertain story overlap", async () => {
-  const item = app.store.news.upsertItem({
-    url: "https://example.com/uncertain-story",
-    title: "Scion report",
-  }).item;
-  app.store.news.updateItem(item.id, {
-    lastError: "Story relationship uncertain: research before suppressing or linking",
-  });
-  const result = await callTool(app.main, "present_news", {
-    item_id: item.id,
-    component: "brief",
-    props: { title: item.title, summary: "A report." },
-  });
-  assert.equal(result.isError, true);
-  assert.match(result.text, /research_items/);
-  assert.equal(app.store.news.cardForItem(item.id), undefined);
-});
-
 /** Drive one tool through the faux model and return the tool result it saw. */
 async function callTool(conversation: Conversation, name: string, args: object) {
   const submission = await conversation.submit(
@@ -427,4 +409,24 @@ test("hyper_fetch reads a long saved scrape chunk by chunk to the end", async ()
   const past = await callTool(app.main, "hyper_fetch", { url, chunk: 4 });
   assert.equal(past.isError, true);
   assert.match(past.text, /has 3 chunks/);
+});
+
+test("present_news researches uncertain overlap before keeping an inconclusive item separate", async () => {
+  const item = app.store.news.upsertItem({
+    url: "https://example.com/uncertain-story",
+    title: "Scion report",
+  }).item;
+  app.store.news.updateItem(item.id, {
+    lastError: "Story relationship uncertain: research before suppressing or linking",
+  });
+  const result = await callTool(app.main, "present_news", {
+    item_id: item.id,
+    component: "brief",
+    props: { title: item.title, summary: "A report." },
+  });
+  assert.equal(result.isError, false, result.text);
+  assert.match(result.text, /Presented card/);
+  assert.equal(app.store.news.findings(item.id).length, 1);
+  assert.equal(app.store.news.item(item.id)?.lastError, undefined);
+  assert.ok(app.store.news.cardForItem(item.id));
 });

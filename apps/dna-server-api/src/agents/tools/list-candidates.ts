@@ -1,6 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineAppTool, toolError, toolText } from "@dna/durable-agent";
 import type { Deps } from "../../deps.ts";
+import { needsRelationshipReview } from "../../news/stories.ts";
 import { itemLine } from "./shared.ts";
 
 export function listCandidates(deps: Deps) {
@@ -21,7 +22,14 @@ export function listCandidates(deps: Deps) {
         "presented",
       ]);
       if (!items.length) return toolText(`Sweep #${args.sweep_id} has no candidates.`);
-      return toolText(items.map((i) => `${itemLine(i)} [${i.status}]`).join("\n"));
+      return toolText(
+        items
+          .map(
+            (item) =>
+              `${itemLine(item)} [${item.status}]${needsRelationshipReview(item) ? ", relationshipReview: research before HFS or presentation" : ""}`,
+          )
+          .join("\n"),
+      );
     },
   });
 }

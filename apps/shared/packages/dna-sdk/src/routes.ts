@@ -85,6 +85,12 @@ export const ROUTES = {
     scope: "read",
     summary: "Card detail with item, findings and the tool call",
   },
+  "cards.read-state": {
+    method: "PATCH",
+    path: "/v1/cards/:id/read",
+    scope: "feedback",
+    summary: "Mark a news card as read or unread",
+  },
   "cards.feedback": {
     method: "POST",
     path: "/v1/cards/:id/feedback",

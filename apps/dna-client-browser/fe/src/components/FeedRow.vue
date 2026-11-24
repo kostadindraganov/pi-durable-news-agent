@@ -8,7 +8,7 @@ import { highlighted } from "../client/layout";
 import { clean } from "../client/text";
 import CardView from "./cards/CardView.vue";
 
-const props = defineProps<{ card: Card }>();
+const props = defineProps<{ card: Card; readControls?: boolean }>();
 const ICONS = { signal: Zap, facts: BadgeCheck, hype: Megaphone };
 const when = computed(() =>
   props.card.publishedAt ? new Date(props.card.publishedAt) : undefined,
@@ -50,6 +50,6 @@ const keyword = computed(() => clean(props.card.topic ?? props.card.sourceName ?
       </span>
       <span class="rail-keyword">{{ keyword }}</span>
     </div>
-    <CardView :card="card" />
+    <CardView :card="card" :read-controls="readControls" />
   </div>
 </template>

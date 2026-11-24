@@ -286,15 +286,8 @@ test("new research reconsiders a singleton without suppressing an unresolved com
       claimSupport: [],
     });
     s.verdict(duplicate);
-    assert.equal(
-      await new StoryMatcher(s.deps).classify(
-        s.store.news.item(next.id)!,
-        [original],
-        undefined,
-        true,
-      ),
-      "duplicate",
-    );
+    assert.equal(await new StoryMatcher(s.deps).review(s.store.news.item(next.id)!), "duplicate");
+    assert.equal(s.store.news.item(next.id)?.lastError, undefined);
     assert.equal(
       s.store.news.membership(next.id)!.storyId,
       s.store.news.membership(original.id)!.storyId,

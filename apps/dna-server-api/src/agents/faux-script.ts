@@ -94,10 +94,17 @@ const desk: FauxRule = (turn) => {
   }
   const info = titles(sweepText);
   if (!called(turn, "research_items").length) {
+    const reviewed = ids(
+      sweepText
+        .split("\n")
+        .filter((line) => line.endsWith(", relationship reviewed"))
+        .join("\n"),
+    );
+    const unresearched = candidates.filter((id) => !reviewed.includes(id));
     const batches = [];
-    for (let i = 0; i < candidates.length; i += 2)
-      batches.push({ item_ids: candidates.slice(i, i + 2) });
-    return call("research_items", { sweep_id: sweepId, batches });
+    for (let i = 0; i < unresearched.length; i += 2)
+      batches.push({ item_ids: unresearched.slice(i, i + 2) });
+    if (batches.length) return call("research_items", { sweep_id: sweepId, batches });
   }
   if (!called(turn, "jev_classify").length)
     return calls(

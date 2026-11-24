@@ -2,18 +2,36 @@
 // Every card, one fixed height: the image (3:2, links to the source; a skeleton while it generates), then source,
 // time, the timeline chip and links, the generative body (clamped), H/F/S and feedback.
 import { computed, ref } from "vue";
-import { ExternalLink, GitCommitVertical, ImageOff, Info, MessageSquareQuote } from "@lucide/vue";
+import {
+  Check,
+  ExternalLink,
+  GitCommitVertical,
+  ImageOff,
+  Info,
+  MessageSquareQuote,
+  RotateCcw,
+} from "@lucide/vue";
 import { ago, type Card } from "@dna/sdk";
 import { openTimeline } from "../../client/layout";
 import { clean } from "../../client/text";
-import { now, referenceInChat, ui } from "../../client/store";
+import { api, attempt, feed, now, referenceInChat, ui } from "../../client/store";
 import FeedbackBar from "../FeedbackBar.vue";
 import HfsPill from "../HfsPill.vue";
 import { cardComponent } from "./registry";
 
-const props = defineProps<{ card: Card }>();
+const props = defineProps<{ card: Card; readControls?: boolean }>();
 const body = computed(() => cardComponent(props.card.component));
 const broken = ref(false);
+const savingRead = ref(false);
+async function toggleRead() {
+  savingRead.value = true;
+  try {
+    const card = await attempt(() => api.setCardRead(props.card.id, !props.card.read));
+    if (card) feed.apply({ type: "feed.card_updated", card });
+  } finally {
+    savingRead.value = false;
+  }
+}
 const when = computed(() =>
   props.card.publishedAt ? (now.value, ago(props.card.publishedAt)) : "date unknown",
 );
@@ -85,6 +103,17 @@ const image = computed(() =>
           {{ card.sources!.length }} sources
         </button>
         <span class="grow" />
+        <button
+          v-if="readControls"
+          class="icon-button small"
+          :aria-label="card.read ? 'Mark as unread' : 'Mark as read'"
+          :title="card.read ? 'Mark as unread' : 'Mark as read'"
+          :disabled="savingRead"
+          @click="toggleRead"
+        >
+          <RotateCcw v-if="card.read" :size="14" />
+          <Check v-else :size="14" />
+        </button>
         <button
           class="icon-button small"
           aria-label="Reference in chat"

@@ -2,7 +2,7 @@
 // News and its tabs. News is always the first tab; timelines open from a card's chip, searches from the search box
 // or the agent's open_tab. A card you voted down leaves News (search and timeline tabs still show it).
 import { computed } from "vue";
-import { GitCommitVertical, Hash, Link, Newspaper, Search, X } from "@lucide/vue";
+import { BookOpenCheck, GitCommitVertical, Hash, Link, Newspaper, Search, X } from "@lucide/vue";
 import { closeTab, layout, tabKey, type FeedTab } from "../client/layout";
 import { feed, feedState, loaded } from "../client/store";
 import BottomPane from "./BottomPane.vue";
@@ -21,8 +21,11 @@ const counts = computed(() => {
 });
 /** News in the order it arrived, the newest card last and lowest; each rail shows when the item was published. */
 const news = computed(() =>
-  feedState.value.news.filter((c) => c.feedback?.signal !== "less").sort((a, b) => a.id - b.id),
+  feedState.value.news.filter((c) => !c.read && c.feedback?.signal !== "less"),
 );
+const read = computed(() => feedState.value.news.filter((c) => c.read));
+const readingArchive = computed(() => layout.tab === "read");
+const visibleCards = computed(() => (readingArchive.value ? read.value : news.value));
 const label = (t: FeedTab) =>
   t.kind === "timeline" ? (feed.timeline(t.id)[0]?.timeline?.title ?? t.title) : t.value;
 const active = computed(() => layout.tabs.find((t) => tabKey(t) === layout.tab));
@@ -40,6 +43,15 @@ const active = computed(() => layout.tabs.find((t) => tabKey(t) === layout.tab))
           @click="layout.tab = 'news'"
         >
           <Newspaper :size="15" /><span>News</span><small>{{ news.length }}</small>
+        </button>
+        <button
+          role="tab"
+          class="feed-tab"
+          data-tab="read"
+          :aria-selected="readingArchive"
+          @click="layout.tab = 'read'"
+        >
+          <BookOpenCheck :size="15" /><span>Read</span><small>{{ read.length }}</small>
         </button>
         <div
           v-for="t in layout.tabs"
@@ -68,12 +80,18 @@ const active = computed(() => layout.tabs.find((t) => tabKey(t) === layout.tab))
       </nav>
       <SearchBox />
     </div>
-    <BottomPane v-if="!active" :count="news.length" label="News" class="feed-list">
+    <BottomPane
+      v-if="!active"
+      :key="layout.tab"
+      :count="visibleCards.length"
+      :label="readingArchive ? 'Read' : 'News'"
+      class="feed-list"
+    >
       <LoadingRows v-if="!loaded" kind="cards" :count="3" label="Loading the news" />
-      <p v-else-if="!news.length" class="empty">
-        Nothing yet. The agent sweeps on its schedule and only presents news worth your attention.
+      <p v-else-if="!visibleCards.length" class="empty">
+        {{ readingArchive ? "No read cards yet." : "No unread cards." }}
       </p>
-      <FeedRow v-for="card in news" :key="card.id" :card="card" />
+      <FeedRow v-for="card in visibleCards" :key="card.id" :card="card" read-controls />
     </BottomPane>
     <TimelineView v-else-if="active.kind === 'timeline'" :id="active.id" :key="layout.tab" />
     <SearchView v-else :by="active.kind" :value="active.value" :key="layout.tab" />

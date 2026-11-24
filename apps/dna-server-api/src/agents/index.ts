@@ -161,7 +161,7 @@ export function createAgents(deps: Deps): Agents {
     };
   };
   const deskTools = [
-    runNewsSweep(deps, sweepTask),
+    runNewsSweep(deps, sweepTask, researcher),
     listCandidates(deps),
     shared.readItem,
     shared.searchWeb,
@@ -169,7 +169,7 @@ export function createAgents(deps: Deps): Agents {
     hyperFetch(deps),
     researchItems(deps, researcher),
     shared.jevClassify,
-    presentNews(deps, imageTask),
+    presentNews(deps, imageTask, researcher),
     presentTimeline(deps),
     askTaste(deps),
     readTaste(deps),

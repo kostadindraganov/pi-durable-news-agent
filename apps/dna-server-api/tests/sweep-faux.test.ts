@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { StoryMatcher } from "../src/news/stories.ts";
 import { startNewsSweep } from "../src/news/sweep.ts";
 import { fauxApp, waitForSweep } from "./helpers.ts";
 
@@ -178,6 +179,117 @@ test("dedupe compares retrieved stories with richer evidence and marks repeated 
       .prepare("SELECT count(*) n FROM jev_calls WHERE sweep_id = ? AND command = 'same-story'")
       .get(sweep.id) as { n: number };
     assert.ok(sameCalls.n >= 1);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the sweep researches flagged items before HFS and drops confirmed duplicate cards", async (t) => {
+  const { app, cleanup } = await fauxApp({ DNA_FIXTURE_SET: "news" });
+  try {
+    const cases = [
+      {
+        prefix: "Codex CLI adds durable sessions",
+        title: "Earlier Codex CLI durable sessions report",
+        duplicate: true,
+      },
+      {
+        prefix: "Durable agents survive restarts",
+        title: "Earlier report on how durable agents survive restarts",
+        duplicate: false,
+      },
+    ];
+    const originals = cases.map(({ title }) => {
+      const { item } = app.store.news.upsertItem({
+        title,
+        url: `https://example.com/${encodeURIComponent(title)}`,
+      });
+      app.store.news.ensureStory(item);
+      app.store.news.addCard({
+        kind: "news",
+        component: "brief",
+        itemId: item.id,
+        toolCallId: `original:${item.id}`,
+        props: { title, summary: "An earlier report." },
+      });
+      return item;
+    });
+    t.mock.method(
+      app.judge,
+      "importance",
+      async (item: Parameters<typeof app.judge.importance>[0]) =>
+        cases.some(({ prefix }) => item.title.startsWith(prefix)) ? 1 : 0.1,
+    );
+    const compare = StoryMatcher.prototype.compare;
+    t.mock.method(
+      StoryMatcher.prototype,
+      "compare",
+      async function (this: StoryMatcher, ...args: Parameters<typeof compare>) {
+        const [candidate, other] = args;
+        const index = cases.findIndex(
+          ({ prefix }, i) => candidate.title.startsWith(prefix) && other.id === originals[i].id,
+        );
+        if (index < 0) return compare.apply(this, args);
+        const duplicate =
+          cases[index].duplicate && app.store.news.findings(candidate.id).length > 0;
+        const verdict = {
+          same: 0.95,
+          covered: duplicate ? 0.95 : 0.5,
+          development: 0.01,
+          addition: 0.01,
+          sufficient: 0.95,
+        };
+        const action = duplicate ? "duplicate" : "uncertain";
+        app.store.db
+          .prepare(`INSERT OR IGNORE INTO story_decisions
+        (item_id, other_item_id, version, evidence_hash, state_json, answers_json, action, created_at)
+        VALUES (?, ?, 1, ?, '{}', ?, ?, ?)`)
+          .run(
+            candidate.id,
+            other.id,
+            action,
+            JSON.stringify(verdict),
+            action,
+            new Date().toISOString(),
+          );
+        return { action, verdict };
+      },
+    );
+    const started = await startNewsSweep(app, app.main, app.ctx, {
+      trigger: "test",
+      requestId: "relationship-review",
+      cards: 30,
+    });
+    const sweep = await waitForSweep(app, started.sweep!.id);
+    assert.equal(sweep.status, "completed");
+    assert.deepEqual(sweep.audit?.missing, []);
+    const items = app.store.news.itemsForSweep(sweep.id);
+    const [repeat, distinct] = cases.map(({ prefix }) =>
+      items.find((item) => item.title.startsWith(prefix))!,
+    );
+    for (const item of [repeat, distinct]) {
+      assert.ok(
+        app.store.news.findings(item.id).length,
+        JSON.stringify({ title: item.title, status: item.status, error: item.lastError }),
+      );
+      assert.equal(item.lastError, undefined);
+    }
+    assert.equal(repeat.duplicateOf, originals[0].id);
+    assert.equal(app.store.news.cardForItem(repeat.id), undefined);
+    assert.equal(app.store.news.latestHfs(repeat.id), undefined);
+    assert.ok(app.store.news.cardForItem(distinct.id));
+    assert.notEqual(
+      app.store.news.membership(distinct.id)?.storyId,
+      app.store.news.membership(originals[1].id)?.storyId,
+    );
+    const tools = app.store.telemetry.toolCallsForSweep(sweep.id);
+    const run = tools.find((tool) => tool.toolName === "run_news_sweep")!;
+    assert.ok((run.details as { relationshipReviews: number }).relationshipReviews >= 2);
+    assert.ok(
+      tools
+        .filter((tool) => tool.toolName === "present_news" && tool.isError)
+        .every((tool) => !tool.resultText?.match(/uncertain story relationship/)),
+    );
   } finally {
     await cleanup();
   }

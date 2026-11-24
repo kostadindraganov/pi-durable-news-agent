@@ -9,7 +9,7 @@ export interface Capability {
 
 export const CAPABILITIES = {
   status: { summary: "Device, model, agent state and next sweep", routes: ["info", "agent.get"] },
-  "feed.read": { summary: "News cards, oldest first", routes: ["feed"] },
+  "feed.read": { summary: "News cards and their read state", routes: ["feed", "cards.read-state"] },
   "feed.search": {
     summary: "Search the news by words, a keyword or a url, in its own tab",
     routes: ["feed.search"],

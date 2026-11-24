@@ -3,7 +3,7 @@ import { resolve, sep } from "node:path";
 import { HFS_CATEGORIES, TAB_BYS, type CardDetail, type HfsCategory } from "@dna/sdk";
 import { int, invalid, notFound, optInt } from "../errors.ts";
 import { applyFeedback } from "../news/taste.ts";
-import { bodyOf, oneOf, str, type Handlers, type RouteDeps } from "./types.ts";
+import { bodyOf, bool, oneOf, str, type Handlers, type RouteDeps } from "./types.ts";
 
 export function labelsOf(value: unknown): HfsCategory[] | undefined {
   if (value === undefined) return undefined;
@@ -21,13 +21,19 @@ export function feedRoutes({
   | "timelines.get"
   | "cards.get"
   | "cards.feedback"
+  | "cards.read-state"
   | "images.get"
 > {
   const { store } = app;
   return {
     feed: (req, res) => {
       const limit = Math.min(int(req.query.limit, "limit", 50), 1000);
-      const items = store.news.cards({ before: optInt(req.query.before, "before"), limit });
+      const read = oneOf(req.query.read, "read", ["true", "false"] as const, true);
+      const items = store.news.cards({
+        before: optInt(req.query.before, "before"),
+        limit,
+        read: read === undefined ? undefined : read === "true",
+      });
       res.json({ items, cursor: items.length === limit ? String(items[0].id) : undefined });
     },
     "feed.search": (req, res) => {
@@ -70,6 +76,15 @@ export function feedRoutes({
           : undefined,
       };
       res.json(detail);
+    },
+    "cards.read-state": (req, res) => {
+      const id = int(req.params.id, "id");
+      const read = bool(bodyOf(req), "read");
+      if (read === undefined) throw invalid("Send read (true or false)");
+      const card = store.news.setCardRead(id, read);
+      if (!card) throw notFound(`No news card ${id}`);
+      app.bus.publish({ type: "feed.card_updated", card });
+      res.json(card);
     },
     "cards.feedback": (req, res) => {
       const card = store.news.card(int(req.params.id, "id"));

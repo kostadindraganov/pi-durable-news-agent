@@ -9,7 +9,7 @@ import type { Item } from "../db/repos/news.ts";
 import { fetchSource } from "./sources/index.ts";
 import { rankScore, weightsOf } from "./rank.ts";
 import { planQueries } from "./taste.ts";
-import { StoryMatcher } from "./stories.ts";
+import { needsRelationshipReview, StoryMatcher } from "./stories.ts";
 import { packageRelease } from "./releases.ts";
 
 export interface SweepInput {
@@ -86,7 +86,7 @@ export function toCandidate(item: Item): Candidate {
     matchedTopic: item.matchedTopic,
     discussion: !!item.discussionUrl,
     image: !!item.imageUrl,
-    relationshipReview: item.lastError?.startsWith("Story relationship uncertain") || undefined,
+    relationshipReview: needsRelationshipReview(item) || undefined,
   };
 }
 

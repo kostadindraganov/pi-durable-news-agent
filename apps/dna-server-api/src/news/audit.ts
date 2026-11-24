@@ -18,7 +18,13 @@ export function auditSweep(store: Store, sweepId: number, log?: Logger): SweepAu
   if (ok("run_news_sweep")) done.push("run_news_sweep");
   if (sweep.candidates > 0 && sweep.status !== "no_news") {
     expected.push("research_items", "hfs for every presented item", "present_news");
-    if (ok("research_items")) done.push("research_items");
+    const reviewed = calls.some(
+      (call) =>
+        call.toolName === "run_news_sweep" &&
+        ((call.details as { relationshipReviews?: number } | undefined)?.relationshipReviews ?? 0) >
+          0,
+    );
+    if (ok("research_items") || reviewed) done.push("research_items");
     const unclassified = presented.filter(
       (p) =>
         !store.db

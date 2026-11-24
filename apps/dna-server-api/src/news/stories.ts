@@ -13,6 +13,12 @@ import {
 
 type StoryDeps = Pick<Deps, "store" | "judge" | "http" | "log" | "bus">;
 
+const RELATIONSHIP_REVIEW = "Story relationship uncertain";
+
+export function needsRelationshipReview(item: Item): boolean {
+  return item.lastError?.startsWith(RELATIONSHIP_REVIEW) ?? false;
+}
+
 /** One matcher per sweep. Page reads are shared, verdicts persist across process restarts. */
 export class StoryMatcher {
   private pages = new Map<number, Promise<string | undefined>>();
@@ -119,6 +125,25 @@ export class StoryMatcher {
     }
   }
 
+  async review(item: Item, sweepId = item.sweepId): Promise<StoryAction | "new" | undefined> {
+    if (!needsRelationshipReview(item)) return undefined;
+    const { store, judge, log } = this.deps;
+    const findings = store.news.findings(item.id).length > 0;
+    let action: StoryAction | "new" = "uncertain";
+    if (findings) {
+      const matches = store.news.reviewMatches(item.id);
+      // Failed comparisons may leave no saved matches to recheck.
+      const history = matches.length
+        ? matches
+        : store.news.storyHistory(judge.policy("same-story", "history_days", 14));
+      if (history.length) action = await this.classify(item, history, sweepId, true);
+    }
+    store.news.ensureStory(item);
+    store.news.updateItem(item.id, { lastError: undefined });
+    log.info("story.reviewed", { itemId: item.id, sweepId, action, findings });
+    return action;
+  }
+
   /** Each candidate is resolved before the next one, so same-sweep coverage sees the full story accumulated so far. */
   async classify(
     item: Item,
@@ -160,8 +185,9 @@ export class StoryMatcher {
     const confident = matches.filter((m) =>
       ["duplicate", "evidence", "development"].includes(m.action),
     );
-    // Multiple plausible stories need research, never an arbitrary first-match merge.
-    if (confident.length === 1) {
+    const ambiguous = matches.some((m) => m.action === "uncertain" && m.verdict.same >= 0.5);
+    // During review, an unresolved competing match keeps the candidate separate.
+    if (confident.length === 1 && !failed && (!reconsider || !ambiguous)) {
       const match = confident[0];
       const role =
         match.action === "duplicate" ? "coverage" : (match.action as "evidence" | "development");
@@ -182,7 +208,7 @@ export class StoryMatcher {
       failed || matches.some((m) => m.action === "uncertain") || confident.length > 1;
     if (uncertain)
       store.news.updateItem(item.id, {
-        lastError: "Story relationship uncertain: research before suppressing or linking",
+        lastError: `${RELATIONSHIP_REVIEW}: research before suppressing or linking`,
       });
     return uncertain ? "uncertain" : "new";
   }

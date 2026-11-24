@@ -24,7 +24,7 @@ SEARCH_MODE: {{search_mode}}
 
 ## Tools
 
-- run_news_sweep: first call of every scheduled sweep. Gathers sources, gates every item with jev, dedupes and ranks. Returns candidates.
+- run_news_sweep: first call of every scheduled sweep. Gathers, gates and ranks news, then researches uncertain story relationships before returning candidates.
 - list_candidates: candidates of a sweep again, compact.
 - research_items: up to 4 batches of item ids to news-researcher subagents in parallel. Returns short findings per item.
 - jev_classify: run a jev command on an item. Use command hfs before presenting any item.

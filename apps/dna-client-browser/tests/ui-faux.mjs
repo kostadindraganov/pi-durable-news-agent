@@ -570,6 +570,28 @@ try {
     "a thumbs down hides the card from News and records show me less",
   );
 
+  const toRead = page.locator(".feed-list .card").last();
+  const readId = await toRead.getAttribute("data-card-id");
+  const readCard = page.locator(`.feed-list [data-card-id="${readId}"]`);
+  const feedbackBeforeRead = (await call("GET", `/v1/cards/${readId}`)).card.feedback;
+  await toRead.getByRole("button", { name: "Mark as read", exact: true }).click();
+  await readCard.waitFor({ state: "detached" });
+  await page.getByRole("tab", { name: /^Read/ }).click();
+  await readCard.waitFor();
+  const marked = (await call("GET", `/v1/cards/${readId}`)).card;
+  check(
+    marked.read === true && JSON.stringify(marked.feedback) === JSON.stringify(feedbackBeforeRead),
+    "marking a card as read moves it to the Read tab without changing feedback",
+  );
+  await readCard.getByRole("button", { name: "Mark as unread", exact: true }).click();
+  await readCard.waitFor({ state: "detached" });
+  await page.getByRole("tab", { name: /^News/ }).click();
+  await readCard.waitFor();
+  check(
+    (await call("GET", `/v1/cards/${readId}`)).card.read === false,
+    "a read card can be restored to News",
+  );
+
   // ---------------------------------------------------------------- tool row into executions
   await page.waitForFunction(() =>
     document.querySelector('[data-tool="present_news"][data-status="done"]:not([disabled])'),
@@ -704,17 +726,17 @@ try {
     "the agent starts on the device default model",
   );
   await page.getByRole("button", { name: "Choose a model" }).click();
-  const haiku = page.locator('[data-model="anthropic/claude-haiku-5.5"]');
+  const freeRouter = page.locator('[data-model="openrouter/free"]');
   check(
-    (await haiku.locator(".badge").textContent()) === "Default",
-    "the model picker marks Claude Haiku 5.5 as the default",
+    (await freeRouter.locator(".badge").textContent()) === "Default",
+    "the model picker marks the Free Models Router as the default",
   );
-  await haiku.click();
+  await freeRouter.click();
   await page.waitForFunction(() =>
-    document.querySelector(".model-button")?.textContent?.includes("Claude Haiku 5.5"),
+    document.querySelector(".model-button")?.textContent?.includes("Free Models Router"),
   );
   check(
-    (await call("GET", "/v1/agent")).model === "anthropic/claude-haiku-5.5",
+    (await call("GET", "/v1/agent")).model === "openrouter/free",
     "the model picker switches the agent's model",
   );
 

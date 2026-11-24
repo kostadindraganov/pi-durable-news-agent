@@ -173,7 +173,7 @@ export class DnaClient {
   sweep(id: number) {
     return this.call<Sweep & { toolCalls: unknown[] }>("sweeps.get", { params: { id } });
   }
-  feed(query: { before?: number; limit?: number } = {}) {
+  feed(query: { before?: number; limit?: number; read?: boolean } = {}) {
     return this.call<Page<Card>>("feed", { query });
   }
   search(query: { q: string; by?: TabBy; limit?: number }) {
@@ -273,6 +273,9 @@ export class DnaClient {
   }
 
   // ------------------------------------------------------------ feedback
+  setCardRead(id: number, read: boolean) {
+    return this.call<Card>("cards.read-state", { params: { id }, body: { read } });
+  }
   feedback(cardId: number, body: FeedbackBody) {
     return this.call<FeedbackResult>("cards.feedback", { params: { id: cardId }, body });
   }

@@ -96,6 +96,29 @@ test("show me more and less move topic weights, card detail shows the feedback, 
   await fails(s.client.feedback(card.id, { labels: ["vibes" as never] }), /labels must be one of/);
 });
 
+test("read cards leave the unread feed, preserve research and feedback, and can be restored", async () => {
+  const card = (await s.client.feed({ read: false })).items.find(
+    (item) => item.feedback?.signal !== "less",
+  )!;
+  const before = await s.client.card(card.id);
+  const keywords = await s.client.keywords();
+  await fails(s.client.setCardRead(card.id, "true" as never), /read must be true or false/);
+  assert.equal((await s.client.setCardRead(card.id, true)).read, true);
+  assert.equal((await s.client.setCardRead(card.id, true)).read, true);
+  assert.ok(!(await s.client.feed({ read: false })).items.some((item) => item.id === card.id));
+  assert.ok((await s.client.feed({ read: true })).items.some((item) => item.id === card.id));
+  const after = await s.client.card(card.id);
+  assert.deepEqual(after.findings, before.findings);
+  assert.deepEqual(after.card.feedback, before.card.feedback);
+  assert.deepEqual(await s.client.keywords(), keywords);
+  await s.stop();
+  await s.start();
+  assert.equal((await s.client.card(card.id)).card.read, true);
+  assert.equal((await s.client.setCardRead(card.id, false)).read, false);
+  assert.ok((await s.client.feed({ read: false })).items.some((item) => item.id === card.id));
+  assert.ok(!(await s.client.feed({ read: true })).items.some((item) => item.id === card.id));
+});
+
 test("feed search finds news by words, keyword and url, and validates its query", async () => {
   const card = (await s.client.feed()).items.find((c) => c.url)!;
   const word = card.title.split(/\s+/).find((w) => w.length > 4)!;

@@ -391,7 +391,7 @@ export class NewsRepo {
     return (
       this.db
         .prepare(`SELECT DISTINCT i.* FROM story_decisions d JOIN items i ON i.id=d.other_item_id
-      WHERE d.item_id=? AND d.action='uncertain' AND json_extract(d.answers_json, '$.same') >= 0.5
+      WHERE d.item_id=? AND d.action!='different' AND i.status NOT IN ('rejected', 'failed')
       ORDER BY i.id DESC LIMIT 12`)
         .all(itemId) as any[]
     ).map(toItem);
@@ -933,6 +933,13 @@ export class NewsRepo {
     return r ? this.card(r.id) : undefined;
   }
 
+  setCardRead(id: number, read: boolean): Card | undefined {
+    const updated = this.db
+      .prepare("UPDATE cards SET read = ? WHERE id = ? AND kind = 'news'")
+      .run(Number(read), id);
+    return updated.changes ? this.card(id) : undefined;
+  }
+
   cardByToolCall(toolCallId: string): Card | undefined {
     const r = this.db.prepare("SELECT id FROM cards WHERE tool_call_id = ?").get(toolCallId) as any;
     return r ? this.card(r.id) : undefined;
@@ -1036,6 +1043,7 @@ export class NewsRepo {
       props,
       itemId: num(r.item_id),
       storyId: membership?.storyId ?? num(r.story_id),
+      read: r.read === 1,
       hiddenFromFeed:
         (membership ? this.storyHead(membership.storyId) !== r.id : false) ||
         (r.item_id ? this.releaseHidden(r.item_id, r.id) : false),
@@ -1105,10 +1113,14 @@ export class NewsRepo {
   }
 
   /** News cards, oldest to newest. `before` pages backwards from a card id. Old story cards are not news. */
-  cards(options: { before?: number; limit?: number } = {}): Card[] {
+  cards(options: { before?: number; limit?: number; read?: boolean } = {}): Card[] {
     const limit = Math.min(options.limit ?? 50, 200);
     const where: string[] = ["c.kind = 'news'", STORY_VISIBLE, RELEASE_VISIBLE];
     const params: Record<string, unknown> = { limit };
+    if (options.read !== undefined) {
+      where.push("c.read = :read");
+      params.read = options.read;
+    }
     if (options.before) {
       where.push("c.id < :before");
       params.before = options.before;

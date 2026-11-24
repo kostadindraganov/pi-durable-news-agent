@@ -2,15 +2,16 @@
 // components, props checked against jev scores, one card per tool task so a replay returns the same card, images
 // resolved or generated in the background). present_timeline links presented cards about one story in date order.
 import { Type } from "@earendil-works/pi-ai";
-import type { Task, ToolExecutionApi } from "@earendil-works/pi-durable";
+import type { AgentChange, Task, ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord";
 import { defineAppTool, onceInCommit, toolError, toolText } from "@dna/durable-agent";
 import { NEWS_COMPONENTS, type Card, type HfsScores } from "@dna/sdk";
 import type { Deps } from "../../deps.ts";
 import type { Item } from "../../db/repos/news.ts";
-import { StoryMatcher } from "../../news/stories.ts";
+import { needsRelationshipReview, StoryMatcher } from "../../news/stories.ts";
 import { checkComponent } from "../../news/components.ts";
 import type { ImageInput } from "../../news/image-task.ts";
+import { researchItemBatches } from "./research-items.ts";
 
 const PROPS_HELP =
   "props holds the component's fields as short phrases: title, summary, dek, action, why, claim, verdict, evidence (array of urls), reality_check, name, version, changes (array), takes (array), quote, speaker, body, events (array of { date, text }), left, right.";
@@ -73,7 +74,11 @@ async function startImage(
   );
 }
 
-export function presentNews(deps: Deps, imageTask: Task<ImageInput, any, any, object>) {
+export function presentNews(
+  deps: Deps,
+  imageTask: Task<ImageInput, any, any, object>,
+  researcher: () => AgentChange,
+) {
   return defineAppTool({
     name: "present_news",
     returns:
@@ -107,32 +112,44 @@ export function presentNews(deps: Deps, imageTask: Task<ImageInput, any, any, ob
         return toolError(`present_news failed: no item #${args.item_id}.`, [
           "Use an item id from run_news_sweep or search_web.",
         ]);
-      const membership = deps.store.news.membership(item.id);
+      let membership = deps.store.news.membership(item.id);
       deps.store.news.refreshReleases();
       const latestRelease = deps.store.news.latestRelease(item.id);
       if (latestRelease && latestRelease !== item.id)
         return toolText(
           `Skipped release #${item.id}: #${latestRelease} was published more recently. Only the latest release per package is presented.`,
         );
+      let existing = deps.store.news.cardForItem(item.id);
+      if (
+        (!membership || membership.role === "development") &&
+        !existing &&
+        needsRelationshipReview(item)
+      ) {
+        const { results } = await researchItemBatches(
+          deps,
+          researcher,
+          item.sweepId,
+          [
+            {
+              item_ids: [item.id],
+              focus: "Check whether this is existing coverage or a new development.",
+            },
+          ],
+          api,
+          ctx,
+        );
+        await api.details({ children: results.map((result) => result.conversationId) }, ctx);
+        membership = deps.store.news.membership(item.id);
+        existing = deps.store.news.cardForItem(item.id);
+      }
       if (membership && membership.role !== "development")
         return toolText(
           `Item #${item.id} is attached as ${membership.role} to story ${membership.storyId}; no additional card is needed.`,
         );
-      const existing = deps.store.news.cardForItem(item.id);
       if (existing)
         return toolText(
           `Presented card ${existing.id} (${existing.component}, ${scoreLine(existing)}).`,
           { cardId: existing.id },
-        );
-      if (
-        item.lastError?.startsWith("Story relationship uncertain") &&
-        !deps.store.news.findings(item.id).length
-      )
-        return toolError(
-          "present_news needs research for this item's uncertain story relationship.",
-          [
-            "Call research_items for this item. It will recheck the possible matches after findings arrive. If evidence remains inconclusive, keep the item separate.",
-          ],
         );
       const hfs = hfsOf(deps, item);
       const attention = hfs ? deps.judge.attention(hfs, item.relevance ?? 0.5) : item.attention;
