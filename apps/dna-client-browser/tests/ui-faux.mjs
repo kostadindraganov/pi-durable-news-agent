@@ -629,6 +629,36 @@ try {
   await page.getByRole("tab", { name: /^News/ }).click();
   await readCard.waitFor();
 
+  const shortListStartsAtTop = () =>
+    page.locator(".feed-list .bottom-scroll").evaluate((scroller) => {
+      const row = scroller.querySelector(".feed-row");
+      if (!row) return false;
+      const top = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      return top >= 0 && top < 20;
+    });
+  const otherIds = await page
+    .locator(".feed-list [data-card-id]")
+    .evaluateAll(
+      (cards, readId) => cards.map((card) => card.dataset.cardId).filter((id) => id !== readId),
+      readId,
+    );
+  for (const id of otherIds) await call("PATCH", `/v1/cards/${id}/read`, { read: true });
+  await page.waitForFunction(() => document.querySelectorAll(".feed-list .feed-row").length === 1);
+  check(await shortListStartsAtTop(), "the last card in News sits at the top");
+  await call("PATCH", `/v1/cards/${readId}/read`, { read: true });
+  await page.getByRole("tab", { name: /^Read/ }).click();
+  const remainingReadCard = page.locator(`.feed-list [data-card-id="${otherIds[0]}"]`);
+  await remainingReadCard.waitFor();
+  for (const id of [...otherIds.slice(1), readId]) await call("DELETE", `/v1/cards/${id}/read`);
+  await page.waitForFunction(() => document.querySelectorAll(".feed-list .feed-row").length === 1);
+  check(
+    await shortListStartsAtTop(),
+    "the last card in Read moves to the top after deleting cards",
+  );
+  for (const id of [...otherIds, readId])
+    await call("PATCH", `/v1/cards/${id}/read`, { read: false });
+  await page.getByRole("tab", { name: /^News/ }).click();
+
   // ---------------------------------------------------------------- tool row into executions
   await page.waitForFunction(() =>
     document.querySelector('[data-tool="present_news"][data-status="done"]:not([disabled])'),

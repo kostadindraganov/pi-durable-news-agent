@@ -125,7 +125,7 @@ const active = computed(() => layout.tabs.find((t) => tabKey(t) === layout.tab))
       :key="layout.tab"
       :count="visibleCards.length"
       :label="readingArchive ? 'Read' : 'News'"
-      class="feed-list"
+      class="feed-list align-top"
     >
       <LoadingRows v-if="!loaded" kind="cards" :count="3" label="Loading the news" />
       <p v-else-if="!visibleCards.length" class="empty">
