@@ -5,6 +5,13 @@ import type { Source, SourceKind } from "@dna/sdk";
 import type { Http } from "../http.ts";
 import { parseFeed } from "./rss.ts";
 import { listingLinks } from "./webpage.ts";
+import {
+  isYouTube,
+  isYouTubeChannelUrl,
+  resolveYouTubeChannel,
+  youtubeChannelId,
+  youtubeFeedUrl,
+} from "./youtube.ts";
 
 /** Sites that are already searched every sweep, or that have no feed to follow. */
 export const AGGREGATORS = [
@@ -26,10 +33,14 @@ export interface Discovered {
   entries: number;
 }
 
-/** One key per site: the host without www, or github.com/owner/repo. */
+/** The host, with separate keys for GitHub repos and identified YouTube channels. */
 export function siteKey(url: string): string {
   const u = new URL(url);
   const host = u.hostname.toLowerCase().replace(/^www\./, "");
+  if (isYouTube(u)) {
+    const id = youtubeChannelId(u);
+    return id ? `youtube.com/channel/${id}` : "youtube.com";
+  }
   if (host === "github.com") {
     const [owner, repo] = u.pathname.split("/").filter(Boolean);
     if (owner && repo) return `github.com/${owner}/${repo}`.toLowerCase();
@@ -45,12 +56,10 @@ export const isAggregator = (url: string) => {
 /** The source already watching this site, if any. */
 export function watching(sources: Source[], url: string): Source | undefined {
   const key = siteKey(url);
-  return sources.find(
-    (s) =>
-      s.url &&
-      ["rss", "atom", "github_releases", "web_page"].includes(s.kind) &&
-      siteKey(s.url) === key,
-  );
+  const kinds = key.startsWith("youtube.com/channel/")
+    ? ["rss", "atom"]
+    : ["rss", "atom", "github_releases", "web_page"];
+  return sources.find((s) => s.url && kinds.includes(s.kind) && siteKey(s.url) === key);
 }
 
 export const isFeed = (text: string) => /<(rss|feed|rdf:RDF)[\s>]/i.test(text.slice(0, 4000));
@@ -66,6 +75,8 @@ function titleOf(text: string, fallback: string): string {
 export async function discoverSource(http: Http, link: string): Promise<Discovered> {
   const page = new URL(link);
   const host = siteKey(link);
+  const youtube = isYouTubeChannelUrl(page);
+  const feedUrl = youtube ? youtubeFeedUrl(await resolveYouTubeChannel(http, page)) : link;
   const tryFeed = async (url: string): Promise<Discovered | undefined> => {
     try {
       const res = await http.get(url, {
@@ -91,17 +102,22 @@ export async function discoverSource(http: Http, link: string): Promise<Discover
     return { ...feed, kind: "github_releases", url, name: `${host.split("/")[2]} releases` };
   }
 
-  const res = await http.get(link, {
-    headers: { accept: "text/html, application/rss+xml, application/atom+xml" },
+  const res = await http.get(feedUrl, {
+    headers: {
+      accept: youtube
+        ? "application/atom+xml, application/xml"
+        : "text/html, application/rss+xml, application/atom+xml",
+    },
     timeoutMs: 10_000,
   });
-  if (isFeed(res.text))
+  if (isFeed(res.text) && (!youtube || feedKind(res.text) === "atom"))
     return {
       kind: feedKind(res.text),
-      url: res.url || link,
+      url: youtube ? feedUrl : res.url || link,
       name: titleOf(res.text, host),
-      entries: parseFeed(res.text, link).length,
+      entries: parseFeed(res.text, feedUrl).length,
     };
+  if (youtube) throw new Error(`YouTube did not return an Atom feed for ${feedUrl}.`);
 
   const { document } = parseHTML(res.text);
   const alternates = (

@@ -34,6 +34,7 @@ SEARCH_MODE: {{search_mode}}
 - ask_taste: ask the reader to label an item Hype, Facts or Signal. One question per item, at most two per sweep.
 - read_taste: the reader's keywords, sources, their weights and recent feedback.
 - save_source: collect a link for future sweeps. Save a lead the reader's upvote left, or a site you found that keeps publishing news worth attention. Future sweeps fetch it.
+- In chat, when the reader sends a YouTube channel URL on its own, with a channel name, or asks to add or follow that channel, call save_source in that turn with the supplied URL and a brief reason. Pass the name if the reader supplied it. Report the outcome of that tool call, even if an earlier message reported a different outcome. If a channel is already saved, give its source ID and leave existing subscriptions alone. The skip option only closes a pending lead. If the reader asks about a channel without asking to follow it, answer their question.
 - card_feedback: vote a card up or down, or label it Hype, Facts or Signal, exactly like the card's buttons. Boost or down vote a card is vote up or down. Only when the reader asks.
 - edit_keyword: add, remove, enable or disable a keyword, or rank one up or down by 0.10. Boost or raise a topic is rank_up, lower it is rank_down. Only when the reader asks.
 - edit_source: rank a source up or down by 0.10 (by source_id from read_taste or by name). Boost or raise a source is rank_up, lower it is rank_down. Only when the reader asks.

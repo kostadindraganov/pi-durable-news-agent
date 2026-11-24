@@ -6,6 +6,7 @@ import { configure, type Conversation } from "@earendil-works/pi-durable";
 import type { Frame } from "@dna/sdk";
 import type { App } from "../src/runtime.ts";
 import { CHUNK_CHARS, scrapeFile } from "../src/agents/tools/hyper-fetch.ts";
+import { fetchSource } from "../src/news/sources/index.ts";
 import { fauxApp } from "./helpers.ts";
 
 let app: App;
@@ -211,6 +212,87 @@ test("save_source saves a site the agent found, refuses aggregators, and does no
     reason: "again",
   });
   assert.match(twice.text, new RegExp(`Already a source: #${source.id}`));
+});
+
+test("save_source follows different YouTube channels separately and recognizes aliases", async (t) => {
+  const leon = app.store.sources.add({
+    kind: "atom",
+    name: "Leon van Zyl",
+    url: "https://youtube.com/xml/feeds/videos.xml?channel_id=UCtevzRsHEKhs-RK8pAqwSyQ",
+  });
+  const id = "UC07G4rT6ZvDv0lokaVHKeQw";
+  const handle = "https://www.youtube.com/@therealseniordev";
+  const legacy = "https://www.youtube.com/c/theSeniorDev";
+  const channel = `https://www.youtube.com/channel/${id}`;
+  const feed = `https://www.youtube.com/feeds/videos.xml?channel_id=${id}`;
+  const video = "https://www.youtube.com/watch?v=example1234";
+  const pages = new Map([
+    [
+      handle,
+      `<html><head><link rel="alternate" type="application/atom+xml" href="${feed}"></head></html>`,
+    ],
+    [
+      legacy,
+      `<script>var ytInitialData = {"metadata":{"channelMetadataRenderer":{"externalId":"${id}"}}};</script>`,
+    ],
+    [
+      feed,
+      `<feed xmlns="http://www.w3.org/2005/Atom"><title>theSeniorDev</title>
+    <entry><title>Example video</title><link rel="alternate" href="${video}"/></entry></feed>`,
+    ],
+    [
+      "https://www.youtube.com/feeds/videos.xml?channel_id=UC0000000000000000000000",
+      "<html>Unavailable</html>",
+    ],
+  ]);
+  const http = t.mock.method(app.http, "get", async (url: string) => {
+    assert.ok(pages.has(url), `Unexpected request to ${url}`);
+    return { status: 200, url, headers: new Headers(), text: pages.get(url)! };
+  });
+  const save = (url: string) =>
+    callTool(app.main, "save_source", { url, reason: "Follow this channel" });
+  const saved = await save(`${handle}/videos?si=tracking`);
+  assert.equal(saved.isError, false, saved.text);
+  assert.match(saved.text, /Saved source #\d+ theSeniorDev \(atom, 1 entries now\)/);
+  const source = app.store.sources.byUrl("atom", feed)!;
+  assert.notEqual(source.id, leon.id);
+
+  const alternateUrls = [
+    handle,
+    legacy,
+    channel,
+    feed,
+    `https://m.youtube.com/xml/feeds/videos.xml?utm_source=test&channel_id=${id}`,
+  ];
+  for (const url of alternateUrls)
+    assert.match(
+      (await save(url)).text,
+      new RegExp(`Already a source: #${source.id} theSeniorDev`),
+    );
+  assert.match(
+    (await save("https://www.youtube.com/channel/UCtevzRsHEKhs-RK8pAqwSyQ")).text,
+    new RegExp(`Already a source: #${leon.id} Leon van Zyl`),
+  );
+  assert.equal(http.mock.calls.filter((call) => call.arguments[0] === feed).length, 1);
+
+  const result = await fetchSource(source, {
+    http: app.http,
+    store: app.store,
+    since: new Date(0),
+  });
+  assert.equal(result.ok, true, result.error);
+  assert.deepEqual(
+    result.docs.map((doc) => [doc.sourceId, doc.url]),
+    [[source.id, video]],
+  );
+
+  const unavailable = await save("https://www.youtube.com/channel/UC0000000000000000000000");
+  assert.equal(unavailable.isError, true);
+  assert.match(unavailable.text, /did not return an Atom feed/);
+  assert.equal(
+    app.store.sources.list().filter((row) => row.url?.includes("youtube.com")).length,
+    2,
+  );
 });
 
 test("reader tools vote, label, edit keywords, open tabs and highlight cards the way the browser does", async () => {

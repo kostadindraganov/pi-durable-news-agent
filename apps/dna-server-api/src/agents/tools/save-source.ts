@@ -2,8 +2,14 @@
 // lead a reader's upvote left. Discovery finds the site's feed, GitHub releases, or an article listing page.
 import { Type } from "@earendil-works/pi-ai";
 import { defineAppTool, toolError, toolText } from "@dna/durable-agent";
+import type { Source } from "@dna/sdk";
 import type { Deps } from "../../deps.ts";
 import { discoverSource, isAggregator, watching } from "../../news/sources/discover.ts";
+import {
+  isYouTubeChannelUrl,
+  resolveYouTubeChannel,
+  youtubeFeedUrl,
+} from "../../news/sources/youtube.ts";
 
 export function saveSource(deps: Deps) {
   return defineAppTool({
@@ -11,7 +17,7 @@ export function saveSource(deps: Deps) {
     returns:
       "Text: the saved source (id, name, kind, entries now, url), the source that already covers the site, or the skipped lead.",
     description:
-      "Save a site as a source every future sweep fetches. Give lead_id for a lead from SOURCE_LEADS, or the url of a good information source you found (its blog, news page, feed or GitHub repo). It finds the feed itself. With skip true and a lead_id, close a lead that is not a news source.",
+      "Save a source for future sweeps. Give lead_id from SOURCE_LEADS or a URL (blog, news page, feed, GitHub repo or YouTube channel). For a YouTube channel, pass its @handle URL or /channel/ URL directly. The tool finds the channel's Atom feed and checks its channel ID. With skip true and a lead_id, close a lead that is not a news source.",
     parameters: Type.Object({
       url: Type.Optional(Type.String()),
       lead_id: Type.Optional(Type.Integer()),
@@ -41,19 +47,42 @@ export function saveSource(deps: Deps) {
         log.info("sources.lead_skipped", { leadId: lead.id, site: lead.site });
         return toolText(`Skipped lead ${lead.id} (${lead.site}): ${args.reason}`);
       }
-      const url = args.url ?? lead?.url;
+      const url = (args.url ?? lead?.url)?.trim();
       if (!url || !/^https?:\/\//.test(url))
         return toolError("save_source failed: give lead_id or an http(s) url.");
+      const parsed = URL.parse(url);
+      if (!parsed) return toolError("save_source failed: invalid source URL.");
       if (isAggregator(url))
         return toolError(
-          `save_source failed: ${new URL(url).hostname} is searched every sweep already.`,
+          `save_source failed: ${parsed.hostname} is searched every sweep already.`,
           ["Save the site the story links to instead."],
         );
-      const existing = watching(store.sources.list(), url);
-      if (existing) {
+      const youtube = isYouTubeChannelUrl(parsed);
+      const discoveryError = (error: unknown) =>
+        toolError(`save_source failed: ${error instanceof Error ? error.message : String(error)}`, [
+          youtube
+            ? "Pass the YouTube channel URL or its Atom feed. Check the reported error before confirming it was saved."
+            : lead
+              ? "Pass a url for the site's blog or news page with this lead_id, or skip the lead with skip true."
+              : "Pass the site's blog or news page, or move on.",
+        ]);
+      const alreadySaved = (existing: Source) => {
         if (lead) store.sources.resolveLead(lead.id, "saved", args.reason, existing.id);
-        return toolText(`Already a source: #${existing.id} ${existing.name} (${existing.kind}).`);
+        const status = existing.enabled ? "" : " It is disabled in Sources.";
+        return toolText(
+          `Already a source: #${existing.id} ${existing.name} (${existing.kind}).${status}`,
+        );
+      };
+      let sourceUrl = url;
+      if (youtube) {
+        try {
+          sourceUrl = youtubeFeedUrl(await resolveYouTubeChannel(http, parsed));
+        } catch (error) {
+          return discoveryError(error);
+        }
       }
+      const existing = watching(store.sources.list(), sourceUrl);
+      if (existing) return alreadySaved(existing);
       if (store.sources.savedCount() >= config.maxSavedSources)
         return toolError(
           `save_source failed: ${config.maxSavedSources} saved sources is the cap (DNA_MAX_SAVED_SOURCES).`,
@@ -61,13 +90,13 @@ export function saveSource(deps: Deps) {
         );
       let found;
       try {
-        found = await discoverSource(http, url);
+        found = await discoverSource(http, sourceUrl);
       } catch (error) {
-        return toolError(`save_source failed: ${String((error as Error).message ?? error)}`, [
-          lead
-            ? "Pass a url for the site's blog or news page with this lead_id, or skip the lead with skip true."
-            : "Pass the site's blog or news page, or move on.",
-        ]);
+        return discoveryError(error);
+      }
+      if (youtube) {
+        const saved = watching(store.sources.list(), found.url);
+        if (saved) return alreadySaved(saved);
       }
       const source =
         store.sources.byUrl(found.kind, found.url) ??

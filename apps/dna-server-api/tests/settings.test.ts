@@ -209,6 +209,20 @@ test("keyword and source edits", async () => {
   await s.client.removeSource(src.id);
 });
 
+test("manual YouTube sources reuse the channel ID across URL variants", async () => {
+  const channel = "UC--oQmMTiFaW3kmCwrjl9-A";
+  const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel}`;
+  const added = await s.client.addSource({ kind: "atom", name: "Jan Marshal", url });
+  const repeat = await s.client.addSource({
+    kind: "rss",
+    name: "Jan Marshal Coding",
+    url: `https://m.youtube.com/xml/feeds/videos.xml?channel_id=${channel}&utm_source=test`,
+  });
+  assert.deepEqual(repeat, added);
+  assert.equal((await s.client.sources()).filter((source) => source.url === url).length, 1);
+  await s.client.removeSource(added.id);
+});
+
 test("compact now runs a compaction task", async () => {
   const { taskId } = await s.client.compact("Keep the sweep summaries.");
   assert.ok(taskId > 0);
