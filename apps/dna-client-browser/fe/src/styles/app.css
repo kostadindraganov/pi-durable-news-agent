@@ -556,6 +556,11 @@ h4 {
   font-size: 12px;
   flex: none;
 }
+.card-meta .read-delete {
+  flex: none;
+  width: 36px;
+  height: 36px;
+}
 .card-meta .source {
   color: var(--text);
   font-weight: 500;
@@ -598,11 +603,6 @@ h4 {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-}
-.card-foot .read-delete {
-  min-height: 34px;
-  padding: 5px 12px;
-  font-size: 13px;
 }
 @container (max-width: 640px) {
   .card {

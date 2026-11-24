@@ -151,6 +151,16 @@ const image = computed(() =>
           title="Open the source"
           ><ExternalLink :size="14"
         /></a>
+        <button
+          v-if="readControls && card.read"
+          class="icon-button read-delete"
+          aria-label="Delete from Read"
+          title="Remove from Read"
+          :disabled="savingRead"
+          @click="deleteFromRead"
+        >
+          <Trash2 :size="20" />
+        </button>
       </div>
       <div class="card-main" :class="{ linked: !!card.url }" @click="openFromBody">
         <component :is="body" :card="card" />
@@ -158,16 +168,6 @@ const image = computed(() =>
       <div class="card-foot">
         <HfsPill :hfs="card.hfs" />
         <FeedbackBar :card="card" />
-        <button
-          v-if="readControls && card.read"
-          class="button secondary read-delete"
-          aria-label="Delete from Read"
-          title="Remove from Read"
-          :disabled="savingRead"
-          @click="deleteFromRead"
-        >
-          <Trash2 :size="16" />Delete
-        </button>
       </div>
     </div>
   </article>

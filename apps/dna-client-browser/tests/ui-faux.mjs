@@ -613,7 +613,15 @@ try {
     retentionUpdated.ok() && (await call("GET", "/v1/feed/read-retention")).days === 7,
     "the Read tab sets a persistent automatic cleanup period",
   );
-  await readCard.getByRole("button", { name: "Delete from Read" }).click();
+  const deleteButton = readCard
+    .locator(".card-meta")
+    .getByRole("button", { name: "Delete from Read" });
+  const deleteBox = await deleteButton.boundingBox();
+  check(
+    deleteBox?.width >= 36 && deleteBox?.height >= 36 && (await deleteButton.innerText()) === "",
+    "the Read card has a larger icon-only Delete button in its header",
+  );
+  await deleteButton.click();
   await readCard.waitFor({ state: "detached" });
   const removed = (await call("GET", `/v1/cards/${readId}`)).card;
   check(removed.readRemoved === true, "Delete removes the card from Read and preserves its detail");
