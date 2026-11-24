@@ -67,6 +67,8 @@ export interface Card {
   hiddenFromFeed?: boolean;
   /** Reader's read state, independent of story grouping and feedback. */
   read?: boolean;
+  /** Removed from the Read tab while retaining the card in story history. */
+  readRemoved?: boolean;
   sources?: {
     itemId: number;
     title: string;
@@ -91,6 +93,12 @@ export interface Card {
   sweepId?: number;
   toolCallId: string;
   createdAt: string;
+}
+
+export const READ_RETENTION_DAYS = [1, 7, 30] as const;
+export type ReadRetentionDays = (typeof READ_RETENTION_DAYS)[number] | null;
+export interface ReadRetention {
+  days: ReadRetentionDays;
 }
 
 export interface Page<T> {
@@ -498,6 +506,7 @@ export type Frame =
   | { type: "agent.batch"; conversationId: number; events: WireAgentEvent[] }
   | { type: "feed.card"; card: Card }
   | { type: "feed.card_updated"; card: Card }
+  | { type: "feed.read_removed"; ids: number[] }
   | { type: "sweep"; sweep: Sweep }
   | { type: "taste.question"; question: TasteQuestion }
   | { type: "agent.state"; state: AgentState }

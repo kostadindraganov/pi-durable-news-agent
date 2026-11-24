@@ -592,6 +592,35 @@ try {
     "a read card can be restored to News",
   );
 
+  await readCard.getByRole("button", { name: "Mark as read", exact: true }).click();
+  await readCard.waitFor({ state: "detached" });
+  await page.getByRole("tab", { name: /^Read/ }).click();
+  await readCard.waitFor();
+  const retention = page.getByRole("combobox", { name: "Auto-delete from Read" });
+  await retention.locator("option[value='30']").waitFor({ state: "attached" });
+  check(
+    (await retention.locator("option").allInnerTexts()).join(",") ===
+      "Off,After 1 day,After 1 week,After 1 month (30 days)",
+    "the Read tab offers daily, weekly and monthly cleanup and Off",
+  );
+  const [retentionUpdated] = await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().endsWith("/v1/feed/read-retention") && r.request().method() === "PATCH",
+    ),
+    retention.selectOption("7"),
+  ]);
+  check(
+    retentionUpdated.ok() && (await call("GET", "/v1/feed/read-retention")).days === 7,
+    "the Read tab sets a persistent automatic cleanup period",
+  );
+  await readCard.getByRole("button", { name: "Delete from Read" }).click();
+  await readCard.waitFor({ state: "detached" });
+  const removed = (await call("GET", `/v1/cards/${readId}`)).card;
+  check(removed.readRemoved === true, "Delete removes the card from Read and preserves its detail");
+  await call("PATCH", `/v1/cards/${readId}/read`, { read: false });
+  await page.getByRole("tab", { name: /^News/ }).click();
+  await readCard.waitFor();
+
   // ---------------------------------------------------------------- tool row into executions
   await page.waitForFunction(() =>
     document.querySelector('[data-tool="present_news"][data-status="done"]:not([disabled])'),

@@ -935,9 +935,28 @@ export class NewsRepo {
 
   setCardRead(id: number, read: boolean): Card | undefined {
     const updated = this.db
-      .prepare("UPDATE cards SET read = ? WHERE id = ? AND kind = 'news'")
-      .run(Number(read), id);
+      .prepare(`UPDATE cards SET read = :read,
+        read_at = CASE WHEN :read = 1 THEN COALESCE(read_at, :now) END,
+        read_removed = CASE WHEN :read = 1 THEN read_removed ELSE 0 END
+        WHERE id = :id AND kind = 'news'`)
+      .run({ read: Number(read), now: nowIso(), id });
     return updated.changes ? this.card(id) : undefined;
+  }
+
+  removeFromRead(id: number): boolean {
+    const result = this.db
+      .prepare("UPDATE cards SET read_removed = 1 WHERE id = ? AND kind = 'news' AND read = 1")
+      .run(id);
+    return result.changes > 0;
+  }
+
+  pruneReadCards(cutoff: string): number[] {
+    const removed = this.db
+      .prepare(`UPDATE cards SET read_removed = 1
+      WHERE kind = 'news' AND read = 1 AND read_removed = 0 AND read_at <= ?
+      RETURNING id`)
+      .all(cutoff) as { id: number }[];
+    return removed.map(({ id }) => id);
   }
 
   cardByToolCall(toolCallId: string): Card | undefined {
@@ -1044,6 +1063,7 @@ export class NewsRepo {
       itemId: num(r.item_id),
       storyId: membership?.storyId ?? num(r.story_id),
       read: r.read === 1,
+      readRemoved: r.read_removed === 1 || undefined,
       hiddenFromFeed:
         (membership ? this.storyHead(membership.storyId) !== r.id : false) ||
         (r.item_id ? this.releaseHidden(r.item_id, r.id) : false),
@@ -1120,6 +1140,7 @@ export class NewsRepo {
     if (options.read !== undefined) {
       where.push("c.read = :read");
       params.read = options.read;
+      if (options.read) where.push("c.read_removed = 0");
     }
     if (options.before) {
       where.push("c.id < :before");

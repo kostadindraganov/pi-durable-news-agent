@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // News and its tabs. News is always the first tab; timelines open from a card's chip, searches from the search box
 // or the agent's open_tab. A card you voted down leaves News (search and timeline tabs still show it).
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { BookOpenCheck, GitCommitVertical, Hash, Link, Newspaper, Search, X } from "@lucide/vue";
+import { READ_RETENTION_DAYS, type ReadRetention, type ReadRetentionDays } from "@dna/sdk";
 import { closeTab, layout, tabKey, type FeedTab } from "../client/layout";
-import { feed, feedState, loaded } from "../client/store";
+import { api, attempt, feed, feedState, loaded } from "../client/store";
 import BottomPane from "./BottomPane.vue";
 import FeedRow from "./FeedRow.vue";
 import LoadingRows from "./LoadingRows.vue";
@@ -23,8 +24,29 @@ const counts = computed(() => {
 const news = computed(() =>
   feedState.value.news.filter((c) => !c.read && c.feedback?.signal !== "less"),
 );
-const read = computed(() => feedState.value.news.filter((c) => c.read));
+const read = computed(() => feedState.value.news.filter((c) => c.read && !c.readRemoved));
 const readingArchive = computed(() => layout.tab === "read");
+const retention = ref<ReadRetention>();
+const changingRetention = ref(false);
+const RETENTION_LABELS = { 1: "After 1 day", 7: "After 1 week", 30: "After 1 month (30 days)" };
+watch(
+  readingArchive,
+  async (open) => {
+    if (open) retention.value = await attempt(() => api.readRetention());
+  },
+  { immediate: true },
+);
+async function changeRetention(select: HTMLSelectElement) {
+  const days = select.value === "off" ? null : (Number(select.value) as ReadRetentionDays);
+  changingRetention.value = true;
+  try {
+    const result = await attempt(() => api.setReadRetention(days));
+    if (result) retention.value = result;
+    else select.value = String(retention.value?.days ?? "off");
+  } finally {
+    changingRetention.value = false;
+  }
+}
 const visibleCards = computed(() => (readingArchive.value ? read.value : news.value));
 const label = (t: FeedTab) =>
   t.kind === "timeline" ? (feed.timeline(t.id)[0]?.timeline?.title ?? t.title) : t.value;
@@ -79,6 +101,24 @@ const active = computed(() => layout.tabs.find((t) => tabKey(t) === layout.tab))
         </div>
       </nav>
       <SearchBox />
+    </div>
+    <div v-if="readingArchive" class="read-toolbar">
+      <label>
+        Auto-delete from Read
+        <select
+          class="schedule-select"
+          aria-label="Auto-delete from Read"
+          title="Time since marking a card as read"
+          :value="retention?.days ?? 'off'"
+          :disabled="!retention || changingRetention"
+          @change="changeRetention($event.target as HTMLSelectElement)"
+        >
+          <option value="off">Off</option>
+          <option v-for="days in READ_RETENTION_DAYS" :key="days" :value="days">
+            {{ RETENTION_LABELS[days] }}
+          </option>
+        </select>
+      </label>
     </div>
     <BottomPane
       v-if="!active"

@@ -1,7 +1,15 @@
 // The feed: news cards oldest to newest, search, timelines, card detail, feedback, and card images.
 import { resolve, sep } from "node:path";
-import { HFS_CATEGORIES, TAB_BYS, type CardDetail, type HfsCategory } from "@dna/sdk";
+import {
+  HFS_CATEGORIES,
+  READ_RETENTION_DAYS,
+  TAB_BYS,
+  type CardDetail,
+  type HfsCategory,
+  type ReadRetentionDays,
+} from "@dna/sdk";
 import { int, invalid, notFound, optInt } from "../errors.ts";
+import { pruneReadCards, readRetention } from "../news/read-retention.ts";
 import { applyFeedback } from "../news/taste.ts";
 import { bodyOf, bool, oneOf, str, type Handlers, type RouteDeps } from "./types.ts";
 
@@ -17,11 +25,14 @@ export function feedRoutes({
 }: RouteDeps): Handlers<
   | "feed"
   | "feed.search"
+  | "feed.read-retention"
+  | "feed.set-read-retention"
   | "timelines.list"
   | "timelines.get"
   | "cards.get"
   | "cards.feedback"
   | "cards.read-state"
+  | "cards.remove-from-read"
   | "images.get"
 > {
   const { store } = app;
@@ -35,6 +46,16 @@ export function feedRoutes({
         read: read === undefined ? undefined : read === "true",
       });
       res.json({ items, cursor: items.length === limit ? String(items[0].id) : undefined });
+    },
+    "feed.read-retention": (_req, res) => res.json(readRetention(store)),
+    "feed.set-read-retention": (req, res) => {
+      const { days } = bodyOf(req);
+      if (days !== null && !READ_RETENTION_DAYS.some((value) => value === days))
+        throw invalid("days must be 1, 7, 30, or null for off");
+      const policy = { days: days as ReadRetentionDays };
+      store.settings.set("readRetention", policy);
+      pruneReadCards(app);
+      res.json(policy);
     },
     "feed.search": (req, res) => {
       const q = str(req.query as Record<string, unknown>, "q", { max: 200 });
@@ -85,6 +106,12 @@ export function feedRoutes({
       if (!card) throw notFound(`No news card ${id}`);
       app.bus.publish({ type: "feed.card_updated", card });
       res.json(card);
+    },
+    "cards.remove-from-read": (req, res) => {
+      const id = int(req.params.id, "id");
+      if (!store.news.removeFromRead(id)) throw notFound(`No read card ${id}`);
+      app.bus.publish({ type: "feed.read_removed", ids: [id] });
+      res.json({ id });
     },
     "cards.feedback": (req, res) => {
       const card = store.news.card(int(req.params.id, "id"));

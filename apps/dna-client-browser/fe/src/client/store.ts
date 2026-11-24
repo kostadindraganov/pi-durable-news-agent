@@ -81,9 +81,7 @@ async function loadSnapshot() {
     api.questions("open"),
     api.agent(),
   ]);
-  info.value = i;
-  feed.load({ cards: [...unread.items, ...read.items], sweeps, questions, agent: state });
-  loaded.value = true;
+  return { info: i, cards: [...unread.items, ...read.items], sweeps, questions, agent: state };
 }
 
 let toolTimer: ReturnType<typeof setTimeout> | undefined;
@@ -97,11 +95,33 @@ function refreshTools() {
 
 export function start(): () => void {
   const stop = new AbortController();
+  let cardChanges: Frame[] | undefined;
   void follow(
     (signal) => api.stream(signal),
     (frame) => {
-      if (frame.type === "hello")
-        void loadSnapshot().catch((e) => notify(String(e.message ?? e), "bad"));
+      if (frame.type === "hello") {
+        const changes: Frame[] = [];
+        cardChanges = changes;
+        void loadSnapshot()
+          .then(({ info: snapshotInfo, ...snapshot }) => {
+            if (cardChanges !== changes || stop.signal.aborted) return;
+            info.value = snapshotInfo;
+            feed.load({ ...snapshot, replaceCards: true });
+            for (const change of changes) feed.apply(change);
+            loaded.value = true;
+          })
+          .catch((e) => notify(String(e.message ?? e), "bad"))
+          .finally(() => {
+            if (cardChanges === changes) cardChanges = undefined;
+          });
+      }
+      if (
+        frame.type === "feed.card" ||
+        frame.type === "feed.card_updated" ||
+        frame.type === "feed.read_removed" ||
+        frame.type === "ui.highlight"
+      )
+        cardChanges?.push(frame);
       agent.apply(frame);
       feed.apply(frame);
       for (const fn of listeners) fn(frame);

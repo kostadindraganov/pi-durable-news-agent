@@ -61,6 +61,18 @@ export const ROUTES = {
     scope: "read",
     summary: "Cards oldest to newest, up to 1000 a page, paged backwards by cursor",
   },
+  "feed.read-retention": {
+    method: "GET",
+    path: "/v1/feed/read-retention",
+    scope: "read",
+    summary: "Automatic cleanup of read cards",
+  },
+  "feed.set-read-retention": {
+    method: "PATCH",
+    path: "/v1/feed/read-retention",
+    scope: "settings",
+    summary: "Remove cards from Read after 1, 7 or 30 days, or turn cleanup off",
+  },
   "feed.search": {
     method: "GET",
     path: "/v1/feed/search",
@@ -90,6 +102,12 @@ export const ROUTES = {
     path: "/v1/cards/:id/read",
     scope: "feedback",
     summary: "Mark a news card as read or unread",
+  },
+  "cards.remove-from-read": {
+    method: "DELETE",
+    path: "/v1/cards/:id/read",
+    scope: "feedback",
+    summary: "Remove a card from Read",
   },
   "cards.feedback": {
     method: "POST",

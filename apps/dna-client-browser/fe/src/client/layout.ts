@@ -3,7 +3,7 @@
 // the search box or when the agent calls open_tab. highlight_item switches to News and flashes one card.
 import { nextTick, reactive, ref, watch } from "vue";
 import type { TabBy } from "@dna/sdk";
-import { feed, notify, onFrame } from "./store";
+import { feed, notify, onFrame, ui } from "./store";
 
 export type FeedTab =
   | { kind: "timeline"; id: number; title: string }
@@ -115,7 +115,12 @@ let highlightTimer: ReturnType<typeof setTimeout> | undefined;
 /** Open the card’s feed tab, scroll to it and highlight it. */
 export function highlight(cardId: number) {
   layout.feed = true;
-  layout.tab = feed.card(cardId)?.read ? "read" : "news";
+  const card = feed.card(cardId);
+  if (card?.readRemoved) {
+    ui.card = cardId;
+    return;
+  }
+  layout.tab = card?.read ? "read" : "news";
   highlighted.value = cardId;
   clearTimeout(highlightTimer);
   highlightTimer = setTimeout(() => (highlighted.value = undefined), 4000);

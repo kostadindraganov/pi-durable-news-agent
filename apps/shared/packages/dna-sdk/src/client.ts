@@ -21,6 +21,8 @@ import type {
   RunDetail,
   RunSummary,
   SendMessageBody,
+  ReadRetention,
+  ReadRetentionDays,
   ScheduleState,
   SendResult,
   Source,
@@ -275,6 +277,15 @@ export class DnaClient {
   // ------------------------------------------------------------ feedback
   setCardRead(id: number, read: boolean) {
     return this.call<Card>("cards.read-state", { params: { id }, body: { read } });
+  }
+  removeFromRead(id: number) {
+    return this.call<{ id: number }>("cards.remove-from-read", { params: { id } });
+  }
+  readRetention() {
+    return this.call<ReadRetention>("feed.read-retention");
+  }
+  setReadRetention(days: ReadRetentionDays) {
+    return this.call<ReadRetention>("feed.set-read-retention", { body: { days } });
   }
   feedback(cardId: number, body: FeedbackBody) {
     return this.call<FeedbackResult>("cards.feedback", { params: { id: cardId }, body });

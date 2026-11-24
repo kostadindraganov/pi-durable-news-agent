@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
 import { DnaError } from "@dna/sdk";
 import { bootServer, idle, settledSweep, type Booted } from "./server.ts";
@@ -117,6 +119,57 @@ test("read cards leave the unread feed, preserve research and feedback, and can 
   assert.equal((await s.client.setCardRead(card.id, false)).read, false);
   assert.ok((await s.client.feed({ read: false })).items.some((item) => item.id === card.id));
   assert.ok(!(await s.client.feed({ read: true })).items.some((item) => item.id === card.id));
+});
+
+test("manual and automatic Read cleanup preserve cards, and retention survives restart", async () => {
+  const cards = (await s.client.feed({ read: false })).items;
+  const [manual, expired, recent] = cards;
+  assert.ok(manual && expired && recent);
+  assert.deepEqual(await s.client.readRetention(), { days: null });
+  await fails(s.client.setReadRetention(2 as never), /days must be/);
+  await assert.rejects(s.client.removeFromRead(manual.id), (e: DnaError) => e.status === 404);
+  for (const card of [manual, expired, recent]) await s.client.setCardRead(card.id, true);
+  const original = await s.client.card(manual.id);
+  await s.client.removeFromRead(manual.id);
+  await s.client.removeFromRead(manual.id);
+  const removed = await s.client.card(manual.id);
+  assert.equal(removed.card.readRemoved, true);
+  assert.deepEqual(removed.findings, original.findings);
+  assert.deepEqual(removed.card.feedback, original.card.feedback);
+  assert.ok(
+    (await s.client.search({ q: manual.url!, by: "url" })).some((card) => card.id === manual.id),
+  );
+  assert.ok(!(await s.client.feed({ read: true })).items.some((card) => card.id === manual.id));
+  assert.ok(!(await s.client.feed({ read: false })).items.some((card) => card.id === manual.id));
+
+  const age = (id: number, days: number) => {
+    const db = new DatabaseSync(join(s.dir, "dna.sqlite"));
+    try {
+      db.prepare("UPDATE cards SET read_at = ? WHERE id = ?").run(
+        new Date(Date.now() - days * 86_400_000).toISOString(),
+        id,
+      );
+    } finally {
+      db.close();
+    }
+  };
+  age(expired.id, 8);
+  assert.ok((await s.client.feed({ read: true })).items.some((card) => card.id === expired.id));
+  assert.deepEqual(await s.client.setReadRetention(30), { days: 30 });
+  assert.ok((await s.client.feed({ read: true })).items.some((card) => card.id === expired.id));
+  assert.deepEqual(await s.client.setReadRetention(7), { days: 7 });
+  assert.ok(!(await s.client.feed({ read: true })).items.some((card) => card.id === expired.id));
+  assert.ok((await s.client.feed({ read: true })).items.some((card) => card.id === recent.id));
+  assert.deepEqual(await s.client.setReadRetention(1), { days: 1 });
+  assert.ok((await s.client.feed({ read: true })).items.some((card) => card.id === recent.id));
+  await s.stop();
+  age(recent.id, 2);
+  await s.start();
+  assert.deepEqual(await s.client.readRetention(), { days: 1 });
+  assert.equal((await s.client.card(recent.id)).card.readRemoved, true);
+  assert.equal((await s.client.card(manual.id)).card.readRemoved, true);
+  for (const card of [manual, expired, recent]) await s.client.setCardRead(card.id, false);
+  await s.client.setReadRetention(null);
 });
 
 test("feed search finds news by words, keyword and url, and validates its query", async () => {

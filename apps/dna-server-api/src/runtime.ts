@@ -32,6 +32,7 @@ import { fixtureDecide, fixtureHttp } from "./news/fixtures.ts";
 import { Judge } from "./news/hfs.ts";
 import { liveHttp } from "./news/http.ts";
 import { Images } from "./news/images.ts";
+import { pruneReadCards } from "./news/read-retention.ts";
 import { Quick } from "./news/quick.ts";
 import { Schedule } from "./news/schedule.ts";
 import { closeStalledSweeps, withdrawStuckSweeps } from "./news/sweep.ts";
@@ -173,7 +174,16 @@ export async function openApp(config: Config, options: { log?: Logger } = {}): P
   }
   harness.harness.resume();
 
+  const cleanRead = () => {
+    try {
+      pruneReadCards(deps);
+    } catch (error) {
+      log.warn("feed.read_prune_failed", { error: String(error) });
+    }
+  };
+  cleanRead();
   const stallTimer = setInterval(() => {
+    cleanRead();
     closeStalledSweeps({ store, log, config, bus });
     withdrawStuckSweeps(
       { store, log, bus },

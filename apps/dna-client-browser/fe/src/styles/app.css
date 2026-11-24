@@ -301,6 +301,21 @@ h4 {
   border-bottom: 1px solid var(--line);
   flex: none;
 }
+.read-toolbar {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px var(--s2);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+.read-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .feed-tabs {
   display: flex;
   align-items: stretch;
@@ -583,6 +598,11 @@ h4 {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+.card-foot .read-delete {
+  min-height: 34px;
+  padding: 5px 12px;
+  font-size: 13px;
 }
 @container (max-width: 640px) {
   .card {

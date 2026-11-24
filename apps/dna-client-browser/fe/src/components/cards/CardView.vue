@@ -10,6 +10,7 @@ import {
   Info,
   MessageSquareQuote,
   RotateCcw,
+  Trash2,
 } from "@lucide/vue";
 import { ago, type Card } from "@dna/sdk";
 import { openTimeline } from "../../client/layout";
@@ -28,6 +29,15 @@ async function toggleRead() {
   try {
     const card = await attempt(() => api.setCardRead(props.card.id, !props.card.read));
     if (card) feed.apply({ type: "feed.card_updated", card });
+  } finally {
+    savingRead.value = false;
+  }
+}
+async function deleteFromRead() {
+  savingRead.value = true;
+  try {
+    const result = await attempt(() => api.removeFromRead(props.card.id));
+    if (result) feed.apply({ type: "feed.read_removed", ids: [result.id] });
   } finally {
     savingRead.value = false;
   }
@@ -148,6 +158,16 @@ const image = computed(() =>
       <div class="card-foot">
         <HfsPill :hfs="card.hfs" />
         <FeedbackBar :card="card" />
+        <button
+          v-if="readControls && card.read"
+          class="button secondary read-delete"
+          aria-label="Delete from Read"
+          title="Remove from Read"
+          :disabled="savingRead"
+          @click="deleteFromRead"
+        >
+          <Trash2 :size="16" />Delete
+        </button>
       </div>
     </div>
   </article>

@@ -21,10 +21,12 @@ export class FeedModel extends Emitter {
   /** Merge REST pages (GET /v1/feed, /v1/sweeps, /v1/taste-questions). */
   load(data: {
     cards?: Card[];
+    replaceCards?: boolean;
     sweeps?: Sweep[];
     questions?: TasteQuestion[];
     agent?: AgentState;
   }) {
+    if (data.replaceCards) this.cards.clear();
     for (const c of data.cards ?? []) this.cards.set(c.id, c);
     for (const s of data.sweeps ?? []) this.sweeps.set(s.id, s);
     for (const q of data.questions ?? []) this.questions.set(q.id, q);
@@ -38,6 +40,12 @@ export class FeedModel extends Emitter {
       case "feed.card_updated":
       case "ui.highlight":
         this.cards.set(frame.card.id, frame.card);
+        break;
+      case "feed.read_removed":
+        for (const id of frame.ids) {
+          const card = this.cards.get(id);
+          if (card) this.cards.set(id, { ...card, readRemoved: true });
+        }
         break;
       case "sweep":
         this.sweeps.set(frame.sweep.id, frame.sweep);
